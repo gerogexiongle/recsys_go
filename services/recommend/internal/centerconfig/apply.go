@@ -1,6 +1,7 @@
 package centerconfig
 
 import (
+	"context"
 	"strings"
 
 	"recsys_go/pkg/recsyskit"
@@ -55,7 +56,7 @@ func filterFeatureLess(items []recsyskit.ItemInfo) []recsyskit.ItemInfo {
 	}
 	var out []recsyskit.ItemInfo
 	for _, it := range items {
-		if it.Extra != nil && it.Extra["feature_less"] == "1" {
+		if !it.HasPortrait {
 			continue
 		}
 		out = append(out, it)
@@ -87,24 +88,9 @@ func CapKeepItemNum(keep int, items []recsyskit.ItemInfo) []recsyskit.ItemInfo {
 	return items[:keep]
 }
 
-// ApplyShowStrategies runs Config_ShowControl-style strategies in order (OSS subset).
+// ApplyShowStrategies runs Config_ShowControl without exclusive pool (unit tests).
 func ApplyShowStrategies(items []recsyskit.ItemInfo, strategies []ShowStrategy) []recsyskit.ItemInfo {
-	out := items
-	for _, st := range strategies {
-		switch st.ShowControlType {
-		case "ScoreControl":
-			out = applyScoreControl(out, st)
-		case "HomogenContent":
-			out = applyHomogenCap(out, st.TopNShowControl)
-		case "MMRRearrange":
-			out = applyMMRRearrange(out, st)
-		case "ForcedInsert":
-			out = applyForcedInsert(out, st)
-		default:
-			// Rearrange, TagScatter, QuantityControl, ... — not implemented in OSS demo.
-		}
-	}
-	return out
+	return ApplyShowStrategiesWithExclusive(context.Background(), nil, items, nil, strategies)
 }
 
 func applyScoreControl(items []recsyskit.ItemInfo, st ShowStrategy) []recsyskit.ItemInfo {
@@ -206,42 +192,3 @@ func applyMMRRearrange(items []recsyskit.ItemInfo, st ShowStrategy) []recsyskit.
 	return out
 }
 
-func applyForcedInsert(items []recsyskit.ItemInfo, st ShowStrategy) []recsyskit.ItemInfo {
-	if len(st.ForcedInsert) == 0 || len(items) == 0 {
-		return items
-	}
-	inPrefix := make(map[recsyskit.ItemID]struct{}, len(items))
-	var prefix []recsyskit.ItemInfo
-	for _, rule := range st.ForcedInsert {
-		if rule.ForcedInsertCount <= 0 {
-			continue
-		}
-		added := 0
-		for _, it := range items {
-			if it.RecallType != rule.RecallType {
-				continue
-			}
-			if _, ok := inPrefix[it.ID]; ok {
-				continue
-			}
-			prefix = append(prefix, it)
-			inPrefix[it.ID] = struct{}{}
-			added++
-			if added >= rule.ForcedInsertCount {
-				break
-			}
-		}
-	}
-	if len(prefix) == 0 {
-		return items
-	}
-	var out []recsyskit.ItemInfo
-	out = append(out, prefix...)
-	for _, it := range items {
-		if _, ok := inPrefix[it.ID]; ok {
-			continue
-		}
-		out = append(out, it)
-	}
-	return out
-}

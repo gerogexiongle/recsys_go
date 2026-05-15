@@ -7,10 +7,11 @@ type ItemID int64
 
 // ItemInfo carries per-candidate state through recall → filter → rank → show.
 type ItemInfo struct {
-	ID         ItemID
-	RecallType string
-	Score      float64
-	Extra      map[string]string
+	ID          ItemID
+	RecallType  string
+	Score       float64
+	Extra       map[string]string
+	HasPortrait bool // true when recsysgo:feat:item exists; FeatureLess drops false
 }
 
 // ItemGroup is a named bucket of candidates (e.g. main lane vs exclusive recall lane).

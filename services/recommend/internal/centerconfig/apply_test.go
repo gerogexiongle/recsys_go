@@ -23,6 +23,17 @@ func TestLiveExposureFilter(t *testing.T) {
 	}
 }
 
+func TestFeatureLessDropsNoPortrait(t *testing.T) {
+	items := []recsyskit.ItemInfo{
+		{ID: 910001, HasPortrait: true},
+		{ID: 910009, HasPortrait: false},
+	}
+	out := ApplyFeatureFilters(recsyskit.RequestContext{}, []FeatureFilterStrategy{{FilterType: "FeatureLess"}}, items)
+	if len(out) != 1 || out[0].ID != 910001 {
+		t.Fatalf("got %+v", out)
+	}
+}
+
 func TestScoreControlBoost(t *testing.T) {
 	items := []recsyskit.ItemInfo{
 		{ID: 1, RecallType: "LiveRedirect", Score: 1.0},

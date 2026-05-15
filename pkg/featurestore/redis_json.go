@@ -68,6 +68,10 @@ func (r *RedisJSONFetcher) FilterLabelJSON(ctx context.Context) ([]byte, bool, e
 	return r.getMissing(ctx, r.sk.FilterLabel)
 }
 
+func (r *RedisJSONFetcher) HomogenExchangeJSON(ctx context.Context) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.HomogenExchange)
+}
+
 func (r *RedisJSONFetcher) RecallLaneJSON(ctx context.Context, lane string) ([]byte, bool, error) {
 	return r.getMissing(ctx, r.sk.RecallLaneKey(lane))
 }

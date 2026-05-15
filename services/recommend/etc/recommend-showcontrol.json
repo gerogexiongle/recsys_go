@@ -16,7 +16,7 @@
             {
               "ShowControlType": "HomogenContent",
               "TopNShowControl": 20,
-              "Comment": "cap list before response"
+              "Comment": "看了又看：TopN 同质化替换 (recsysgo:homogen:exchange)"
             },
             {
               "ShowControlType": "ForcedInsert",
@@ -24,7 +24,8 @@
                 {
                   "RecallType": "LiveRedirect",
                   "ForcedInsertCount": 1,
-                  "ExtractMethod": "TopNOrder"
+                  "ExtractMethod": "TopNOrder",
+                  "Comment": "实时重定向：独立召回池强插置顶（C++ ExclusiveRecallList；生产可配 PageNum/PageSize 分页插入）"
                 }
               ]
             }

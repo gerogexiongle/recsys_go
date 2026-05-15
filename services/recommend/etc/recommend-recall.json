@@ -36,6 +36,38 @@
             }
           ],
           "FinalRetCount": 5
+        },
+        {
+          "UserGroup": "T0_NewUser",
+          "AllMergeNum": 200,
+          "ExclusiveRecallList": [
+            {
+              "RecallType": "LiveRedirect",
+              "RecallNum": 3,
+              "MergeMaxNum": 3
+            }
+          ],
+          "RecallAndMergeList": [
+            {
+              "RecallType": "HotMap",
+              "RecallNum": 10,
+              "MergeMaxNum": 8,
+              "SampleFold": 1
+            },
+            {
+              "RecallType": "NewUser_Hot",
+              "RecallNum": 10,
+              "MergeMaxNum": 8,
+              "SampleFold": 1
+            },
+            {
+              "RecallType": "NewUser_HighRetention",
+              "RecallNum": 8,
+              "MergeMaxNum": 6,
+              "SampleFold": 1
+            }
+          ],
+          "FinalRetCount": 5
         }
       ]
     }

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"recsys_go/pkg/featurestore"
 	"recsys_go/pkg/recsyskit/transporthttp"
 	"recsys_go/services/recommend/internal/centerconfig"
 	"recsys_go/services/recommend/internal/recall"
@@ -65,7 +64,7 @@ func TestCenterLiveExposureFilters910005(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := NewRecommendCenter(client, featurestore.NoOp, center, recall.NewRegistry(nil))
+	rec := NewRecommendCenter(client, demoTestFetcher{}, center, recall.NewRegistry(nil))
 	resp, err := rec.Handle(context.Background(), &transporthttp.RecommendRequestJSON{
 		UUID:     "t",
 		UserID:   1,

@@ -201,7 +201,7 @@ flowchart TD
 | 用户画像（FM/展控） | `recsysgo:feat:user:%d` | JSON 画像 | 无用户画像槽位 |
 | 物品画像（FM/展控） | `recsysgo:feat:item:%d` | JSON 画像 | 无物品画像槽位 |
 | LiveExposure（物品维） | `recsysgo:filter:exposure` | JSON map `item_id→count` | 不按曝光过滤 |
-| FeatureLess | `recsysgo:filter:featureless` | JSON 数组 `[910009,…]` | 无 feature-less 物品 |
+| FeatureLess | （无独立 Redis key） | 召回后检查 `recsysgo:feat:item:{id}` 是否存在 | 无画像的 item 在合并前剔除，不参与排序 |
 | Label 白名单 | `recsysgo:filter:label` | JSON map `item_id→label` | 无法按 label 命中 |
 | 非个性化召回 | `recsysgo:recall:lane:{RecallType}` | JSON 物品 id 列表 | 回退代码 stub |
 | 协同过滤（个性化） | `recsysgo:recall:cf:user:%d` | JSON 物品 id 列表 | 回退 stub |

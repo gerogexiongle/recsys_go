@@ -153,6 +153,7 @@ type ShowStrategy struct {
 	ScoreControlFactor  float64            `json:"ScoreControlFactor,omitempty"`
 	PageNum             int                `json:"PageNum,omitempty"`
 	PageSize            int                `json:"PageSize,omitempty"`
+	PageInsertCount     int                `json:"PageInsertCount,omitempty"`
 	MMRConstant         float64            `json:"MMRConstant,omitempty"`
 	MMRDimension        int                `json:"MMRDimension,omitempty"`
 	ForcedInsert        []ForcedInsertRule `json:"ForcedInsert,omitempty"`

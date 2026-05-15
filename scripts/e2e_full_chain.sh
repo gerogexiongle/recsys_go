@@ -57,7 +57,7 @@ resp = json.loads(sys.argv[1])
 ids = resp.get("item_ids") or []
 print("item_ids:", ids)
 assert 910005 not in ids, "910005 must be filtered by LiveExposure (exposure=15)"
-assert 910009 not in ids, "910009 must be filtered by FeatureLess"
+assert 910009 not in ids, "910009 must be dropped (no recsysgo:feat:item portrait for rank)"
 assert 910001 in ids, "910001 LiveRedirect should survive merge/filter"
 assert len(ids) >= 3, "expected at least 3 items"
 recall_types = {r.get("recall_type") for r in resp.get("recall") or []}

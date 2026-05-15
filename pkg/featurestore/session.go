@@ -14,10 +14,9 @@ type Session struct {
 
 // CenterSession: profile per entity + merged filter blobs (item-level).
 type CenterSession struct {
-	Profile       *Session
-	Exposure      map[recsyskit.ItemID]int // from recsysgo:filter:exposure
-	FeatureLess   map[int64]struct{}     // from recsysgo:filter:featureless
-	LabelByItem   map[int64]string       // from recsysgo:filter:label
+	Profile     *Session
+	Exposure    map[recsyskit.ItemID]int
+	LabelByItem map[int64]string
 }
 
 func LoadSession(ctx context.Context, fetch Fetcher, userID int64, itemIDs []int64) (*Session, error) {
@@ -69,11 +68,6 @@ func LoadCenterSession(ctx context.Context, fetch Fetcher, userID int64, itemIDs
 			cs.Exposure[recsyskit.ItemID(id)] = c
 		}
 	}
-	flRaw, flMiss, err := st.FilterFeatureLessJSON(ctx)
-	if err != nil {
-		return nil, err
-	}
-	cs.FeatureLess = ParseFeatureLessSet(flRaw, flMiss)
 	lbRaw, lbMiss, err := st.FilterLabelJSON(ctx)
 	if err != nil {
 		return nil, err
@@ -86,17 +80,8 @@ func (cs *CenterSession) EnrichItems(items []recsyskit.ItemInfo) []recsyskit.Ite
 	out := make([]recsyskit.ItemInfo, len(items))
 	for i, it := range items {
 		out[i] = it
-		id := int64(it.ID)
-		if cs.FeatureLess != nil {
-			if _, drop := cs.FeatureLess[id]; drop {
-				if out[i].Extra == nil {
-					out[i].Extra = make(map[string]string)
-				}
-				out[i].Extra["feature_less"] = "1"
-			}
-		}
 		if cs.LabelByItem != nil {
-			if lb := cs.LabelByItem[id]; lb != "" {
+			if lb := cs.LabelByItem[int64(it.ID)]; lb != "" {
 				if out[i].Extra == nil {
 					out[i].Extra = make(map[string]string)
 				}

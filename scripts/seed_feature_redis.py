@@ -90,10 +90,31 @@ def main():
     print(f"Connected redis {host}:{port}")
     _del_obsolete_keys(r)
 
-    r.set("recsysgo:feat:user:900001", json.dumps({"age": 38.0, "gender": 1.0, "income_wan": 6.5}))
+    import time
+    now_ts = int(time.time())
+    r.set(
+        "recsysgo:feat:user:900001",
+        json.dumps({
+            "age": 38.0,
+            "gender": 1.0,
+            "income_wan": 6.5,
+            "user_segment": "def_group",
+            "live_redirect": {
+                "map_list": [
+                    {"id": 910001, "ts": now_ts, "weight": 1.0},
+                    {"id": 910002, "ts": now_ts - 120, "weight": 0.8},
+                ]
+            },
+        }),
+    )
     r.set(
         "recsysgo:feat:user:900002",
-        json.dumps({"user_profile": {"age": 62.0, "gender": 0.0}, "user_finance": {"income_wan": 8.2}}),
+        json.dumps({
+            "user_profile": {"age": 62.0, "gender": 0.0},
+            "user_finance": {"income_wan": 8.2},
+            "is_new_user": True,
+            "user_segment": "T0_NewUser",
+        }),
     )
     # item tag = category id 0..5 (see README); used to build invert index
     item_tags = {
@@ -106,6 +127,10 @@ def main():
         tag = item_tags[item_id]
         ctr = 0.012 + 0.014 * idx
         rev = 8000.0 + 7200.0 * idx + (item_id % 97) * 13.0
+        if item_id == 910009:
+            # FeatureLess E2E: no recsysgo:feat:item key (cannot rank)
+            invert_by_tag.setdefault(tag, []).append(item_id)
+            continue
         r.set(
             f"recsysgo:feat:item:{item_id}",
             json.dumps({"tag": tag, "ctr_7d": round(ctr, 6), "revenue_7d": round(rev, 2)}),
@@ -129,8 +154,11 @@ def main():
     print("SET recsysgo:recall:taginterest:7d:user:900001/900002")
 
     r.set("recsysgo:filter:exposure", json.dumps({"910005": 15}))
-    r.set("recsysgo:filter:featureless", json.dumps([910009]))
-    r.set("recsysgo:recall:lane:LiveRedirect", json.dumps([910001, 910002, 910003]))
+    # LiveRedirect: per-user live_redirect in feat:user (not lane list); lane key kept for legacy tools only
+    r.set("recsysgo:homogen:exchange", json.dumps({"910010": 910003}))
+    r.set("recsysgo:recall:lane:HotMap", json.dumps([910002, 910003, 910004, 910010]))
+    r.set("recsysgo:recall:lane:NewUser_Hot", json.dumps([910002, 910003, 910004]))
+    r.set("recsysgo:recall:lane:NewUser_HighRetention", json.dumps([910001, 910010]))
   # CF list disjoint from CrossTag invert (tag 3/4) so merge keeps CrossTag7d recall_type on 910006-910008
     r.set("recsysgo:recall:cf:user:900001", json.dumps([910010, 910004, 910003, 910002]))
     r.set("recsysgo:recall:cf:user:900002", json.dumps([910010, 910008, 910007, 910006]))

@@ -14,6 +14,7 @@ const (
 	KeyFilterExposure    = "recsysgo:filter:exposure"    // JSON map item_id -> count
 	KeyFilterFeatureLess = "recsysgo:filter:featureless" // JSON array of item ids
 	KeyFilterLabel       = "recsysgo:filter:label"       // JSON map item_id -> label
+	KeyHomogenExchange   = "recsysgo:homogen:exchange" // JSON map item_id -> homogen item_id (看了又看)
 )
 
 // Recall — non-personalized lane = single list; CF = per-user list (C++ invert ZSET vs user CF).
@@ -32,7 +33,8 @@ type KeyPatterns struct {
 type StrategyKeyPatterns struct {
 	FilterExposure    string
 	FilterFeatureLess string
-	FilterLabel       string
+	FilterLabel        string
+	HomogenExchange    string
 	RecallLanePrefix   string
 	RecallCFUser       string
 	TagInterestUser    string // fmt pattern: window, uin
@@ -48,6 +50,7 @@ func DefaultStrategyKeyPatterns() StrategyKeyPatterns {
 		FilterExposure:    KeyFilterExposure,
 		FilterFeatureLess: KeyFilterFeatureLess,
 		FilterLabel:       KeyFilterLabel,
+		HomogenExchange:   KeyHomogenExchange,
 		RecallLanePrefix: KeyRecallLanePrefix,
 		RecallCFUser:     DefaultRecallCFUserKey,
 		TagInterestUser:  DefaultTagInterestUserKey,

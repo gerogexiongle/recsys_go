@@ -7,16 +7,18 @@ import (
 	"recsys_go/pkg/recsyskit"
 	"recsys_go/pkg/recsyskit/transporthttp"
 	"recsys_go/services/recommend/internal/centerconfig"
+	"recsys_go/services/recommend/internal/pipeline"
 	"recsys_go/services/recommend/internal/recall"
 )
 
-// Recommend wires optional Config_Recall-style funnel (multi-recall → merge → filter → rank → show). Sorting trunc/model AB lives in rank RankExpConf.json.
+// Recommend wires recall → merge → filter → rank → show (center or funnel mode).
 type Recommend struct {
 	Pipeline *recsyskit.Pipeline
 	Features featurestore.Fetcher
 	Funnel   *recsyskit.FunnelLibrary
 	Center   *centerconfig.CenterBundle
 	Recall   *recall.Registry
+	centerPL *pipeline.Center
 }
 
 func NewRecommend(rank recsyskit.RankClient, feat featurestore.Fetcher) *Recommend {
@@ -36,12 +38,14 @@ func NewRecommendFunnel(rank recsyskit.RankClient, feat featurestore.Fetcher, fu
 }
 
 func NewRecommendCenter(rank recsyskit.RankClient, feat featurestore.Fetcher, center *centerconfig.CenterBundle, reg *recall.Registry) *Recommend {
-	return &Recommend{
+	r := &Recommend{
 		Pipeline: &recsyskit.Pipeline{Rank: rank},
 		Features: feat,
 		Center:   center,
 		Recall:   reg,
 	}
+	r.centerPL = &pipeline.Center{Features: feat, Center: center, Recall: reg, Rank: rank}
+	return r
 }
 
 func (l *Recommend) Handle(ctx context.Context, req *transporthttp.RecommendRequestJSON) (*transporthttp.RecommendResponseJSON, error) {
@@ -54,11 +58,17 @@ func (l *Recommend) Handle(ctx context.Context, req *transporthttp.RecommendRequ
 		DeviceID:        req.DeviceID,
 		TerminalModel:   req.TerminalModel,
 		OSType:          req.OS,
-		UserGroup: req.UserGroup,
+		UserGroup:       req.UserGroup,
 	}
 
-	if l.Center != nil && l.Recall != nil {
-		return l.handleCenter(ctx, req, rctx)
+	if l.centerPL != nil {
+		out, err := l.centerPL.Run(ctx, req, rctx)
+		if err != nil {
+			return nil, err
+		}
+		if out != nil {
+			return out, nil
+		}
 	}
 	if l.Funnel != nil && l.Recall != nil {
 		return l.handleFunnel(ctx, req, rctx)
@@ -90,48 +100,14 @@ func (l *Recommend) handleFunnel(ctx context.Context, req *transporthttp.Recomme
 		return nil, err
 	}
 	merged := recsyskit.MergeRecallLanes(exclusiveBatches, mainBatches, prof.AllMergeNum)
-	merged, rctx = l.enrichFromRedis(ctx, rctx, merged)
+	merged, _ = l.markAndDropNoPortrait(ctx, merged)
+	rctx = l.loadExposure(ctx, rctx)
 	merged = recsyskit.ApplyFilterPolicies(rctx, prof.ResolvedFilterPolicies(rctx.ExpIDs), merged)
 	if len(merged) == 0 {
 		return &transporthttp.RecommendResponseJSON{UserID: req.UserID}, nil
 	}
 	ret := effectiveRetCount(req, prof.FinalRetCount)
 	return l.rankAndShowFunnel(ctx, req, rctx, merged, prof.ResolvedShowControl(rctx.ExpIDs), ret)
-}
-
-func (l *Recommend) handleCenter(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, error) {
-	if l.Center.Recall == nil {
-		return l.stubRankResponse(ctx, req, rctx)
-	}
-	prof := l.Center.Recall.ResolveRecall(rctx.ExpIDs, rctx.UserGroup)
-	if prof == nil {
-		return l.stubRankResponse(ctx, req, rctx)
-	}
-	exclusive, main := prof.ResolvedRecallLists(rctx.ExpIDs)
-	exclusiveBatches, err := l.runRules(ctx, rctx, exclusive)
-	if err != nil {
-		return nil, err
-	}
-	mainBatches, err := l.runRules(ctx, rctx, main)
-	if err != nil {
-		return nil, err
-	}
-	merged := recsyskit.MergeRecallLanes(exclusiveBatches, mainBatches, prof.AllMergeNum)
-	merged, rctx = l.enrichFromRedis(ctx, rctx, merged)
-	if l.Center.Filter != nil {
-		fg := l.Center.Filter.ResolveFilter(rctx.ExpIDs, rctx.UserGroup)
-		if fg != nil {
-			rules, feats := fg.ResolvedRuleAndFeature(rctx.ExpIDs)
-			merged = centerconfig.ApplyRuleFilters(rctx, rules, merged)
-			merged = centerconfig.ApplyFeatureFilters(rctx, feats, merged)
-			merged = centerconfig.CapKeepItemNum(fg.KeepItemNum, merged)
-		}
-	}
-	if len(merged) == 0 {
-		return &transporthttp.RecommendResponseJSON{UserID: req.UserID}, nil
-	}
-	ret := effectiveRetCount(req, prof.FinalRetCount)
-	return l.rankAndShowCenter(ctx, req, rctx, merged, ret)
 }
 
 func (l *Recommend) stubRankResponse(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, error) {
@@ -182,60 +158,6 @@ func (l *Recommend) rankAndShowFunnel(ctx context.Context, req *transporthttp.Re
 	return buildRecommendResponse(req, items, ret), nil
 }
 
-func (l *Recommend) rankAndShowCenter(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext, merged []recsyskit.ItemInfo, ret int32) (*transporthttp.RecommendResponseJSON, error) {
-	if ret <= 0 {
-		ret = int32(len(merged))
-	}
-	mreq := &recsyskit.MultiRankRequest{
-		Ctx:          rctx,
-		PreRankTrunc: 0,
-		RankTrunc:    0,
-		RankProfile:  "",
-		Groups: []recsyskit.ItemGroup{{
-			Name:     "Main",
-			ItemIDs:  recsyskitIDs(merged),
-			RetCount: ret,
-		}},
-	}
-	resp, err := l.Pipeline.Rank.MultiRank(ctx, mreq)
-	if err != nil {
-		return nil, err
-	}
-	items := merged
-	if resp != nil && len(resp.Groups) > 0 && len(resp.Groups[0].Items) > 0 {
-		items = reorderByRankGeneric(merged, resp.Groups[0].Items)
-	}
-	if l.Center.Show != nil {
-		sg := l.Center.Show.ResolveShow(rctx.ExpIDs, rctx.UserGroup)
-		if sg != nil {
-			items = centerconfig.ApplyShowStrategies(items, sg.ResolvedStrategyList(rctx.ExpIDs))
-		}
-	}
-	return buildRecommendResponse(req, items, ret), nil
-}
-
-// enrichFromRedis loads profile feat + per-strategy Redis keys (C++ separate proto fields).
-func (l *Recommend) enrichFromRedis(ctx context.Context, rctx recsyskit.RequestContext, items []recsyskit.ItemInfo) ([]recsyskit.ItemInfo, recsyskit.RequestContext) {
-	if l.Features == nil || l.Features == featurestore.NoOp {
-		if rctx.Exposure == nil {
-			rctx.Exposure = demoItemExposure()
-		}
-		return items, rctx
-	}
-	ids := make([]int64, len(items))
-	for i := range items {
-		ids[i] = int64(items[i].ID)
-	}
-	cs, err := featurestore.LoadCenterSession(ctx, l.Features, rctx.UserID, ids)
-	if err != nil {
-		return items, rctx
-	}
-	if len(cs.Exposure) > 0 {
-		rctx.Exposure = cs.Exposure
-	}
-	return cs.EnrichItems(items), rctx
-}
-
 func (l *Recommend) runRules(ctx context.Context, rctx recsyskit.RequestContext, rules []recsyskit.RecallMergeRule) ([][]recsyskit.ItemInfo, error) {
 	var batches [][]recsyskit.ItemInfo
 	for _, rule := range rules {
@@ -246,6 +168,10 @@ func (l *Recommend) runRules(ctx context.Context, rctx recsyskit.RequestContext,
 		if rule.UseTopKIndex > 0 && len(raw) > rule.UseTopKIndex {
 			raw = raw[:rule.UseTopKIndex]
 		}
+		raw, err = l.markAndDropNoPortrait(ctx, raw)
+		if err != nil {
+			return nil, err
+		}
 		mergeMax := rule.MergeMaxNum
 		if mergeMax <= 0 {
 			mergeMax = rule.RecallNum
@@ -254,6 +180,35 @@ func (l *Recommend) runRules(ctx context.Context, rctx recsyskit.RequestContext,
 		batches = append(batches, batch)
 	}
 	return batches, nil
+}
+
+func (l *Recommend) loadExposure(ctx context.Context, rctx recsyskit.RequestContext) recsyskit.RequestContext {
+	if l.Features == nil || l.Features == featurestore.NoOp {
+		return rctx
+	}
+	st, ok := l.Features.(featurestore.StrategyFetcher)
+	if !ok {
+		return rctx
+	}
+	raw, miss, err := st.FilterExposureJSON(ctx)
+	if err != nil || miss {
+		return rctx
+	}
+	if m := featurestore.ParseExposureJSON(raw, miss); len(m) > 0 {
+		rctx.Exposure = make(map[recsyskit.ItemID]int, len(m))
+		for id, c := range m {
+			rctx.Exposure[recsyskit.ItemID(id)] = c
+		}
+	}
+	return rctx
+}
+
+func (l *Recommend) markAndDropNoPortrait(ctx context.Context, items []recsyskit.ItemInfo) ([]recsyskit.ItemInfo, error) {
+	marked, err := featurestore.MarkItemPortraits(ctx, l.Features, items)
+	if err != nil {
+		return items, err
+	}
+	return featurestore.DropWithoutPortrait(marked), nil
 }
 
 func recsyskitIDs(items []recsyskit.ItemInfo) []recsyskit.ItemID {
@@ -301,9 +256,4 @@ func buildRecommendResponse(req *transporthttp.RecommendRequestJSON, items []rec
 		})
 	}
 	return out
-}
-
-// demoItemExposure item-level fallback when Redis disabled (recsysgo:filter:exposure).
-func demoItemExposure() map[recsyskit.ItemID]int {
-	return map[recsyskit.ItemID]int{910005: 15}
 }

@@ -20,6 +20,11 @@ type StrategyFetcher interface {
 	FilterLabelJSON(ctx context.Context) ([]byte, bool, error)
 }
 
+// HomogenFetcher loads 看了又看 replacement map (C++ ExchangeOnlineHomogenMap).
+type HomogenFetcher interface {
+	HomogenExchangeJSON(ctx context.Context) ([]byte, bool, error)
+}
+
 // RecallFetcher loads recall lists: lane = global; CF / tag-interest = per user; tag invert per tag id.
 type RecallFetcher interface {
 	RecallLaneJSON(ctx context.Context, lane string) ([]byte, bool, error)
@@ -42,6 +47,9 @@ func (NoOpFetcher) FilterFeatureLessJSON(context.Context) ([]byte, bool, error) 
 	return nil, true, nil
 }
 func (NoOpFetcher) FilterLabelJSON(context.Context) ([]byte, bool, error) {
+	return nil, true, nil
+}
+func (NoOpFetcher) HomogenExchangeJSON(context.Context) ([]byte, bool, error) {
 	return nil, true, nil
 }
 func (NoOpFetcher) RecallLaneJSON(context.Context, string) ([]byte, bool, error) {

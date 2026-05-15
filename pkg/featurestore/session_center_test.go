@@ -18,10 +18,6 @@ func (s stubStrategyFetcher) FilterExposureJSON(context.Context) ([]byte, bool, 
 	return s.expJSON, len(s.expJSON) == 0, nil
 }
 
-func (s stubStrategyFetcher) FilterFeatureLessJSON(context.Context) ([]byte, bool, error) {
-	return s.flJSON, len(s.flJSON) == 0, nil
-}
-
 func (s stubStrategyFetcher) FilterLabelJSON(context.Context) ([]byte, bool, error) {
 	return s.lbJSON, len(s.lbJSON) == 0, nil
 }
@@ -29,21 +25,18 @@ func (s stubStrategyFetcher) FilterLabelJSON(context.Context) ([]byte, bool, err
 func TestLoadCenterSession_mergedFilterKeys(t *testing.T) {
 	fetch := stubStrategyFetcher{
 		expJSON: []byte(`{"910005":15}`),
-		flJSON:  []byte(`[910009]`),
+		lbJSON:  []byte(`{"910001":"Adventure"}`),
 	}
-	cs, err := LoadCenterSession(context.Background(), fetch, 900001, []int64{910005, 910009})
+	cs, err := LoadCenterSession(context.Background(), fetch, 900001, []int64{910001})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cs.Exposure[910005] != 15 {
 		t.Fatalf("exposure %+v", cs.Exposure)
 	}
-	items := []recsyskit.ItemInfo{{ID: 910009}, {ID: 910010}}
+	items := []recsyskit.ItemInfo{{ID: 910001}}
 	enriched := cs.EnrichItems(items)
-	if enriched[0].Extra["feature_less"] != "1" {
-		t.Fatalf("910009 %+v", enriched[0].Extra)
-	}
-	if enriched[1].Extra != nil && enriched[1].Extra["feature_less"] == "1" {
-		t.Fatal("910010 should not be feature-less")
+	if enriched[0].Extra["label"] != "Adventure" {
+		t.Fatalf("label %+v", enriched[0].Extra)
 	}
 }

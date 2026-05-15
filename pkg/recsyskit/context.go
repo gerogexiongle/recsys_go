@@ -14,4 +14,6 @@ type RequestContext struct {
 	UserGroup string
 	// Exposure counts impressions per item for filter policies (filled by center / adapters).
 	Exposure map[ItemID]int
+	// UserFeat is cached user profile JSON (live_redirect, user_segment, ...).
+	UserFeat []byte
 }

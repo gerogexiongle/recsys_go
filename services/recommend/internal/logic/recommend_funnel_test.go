@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"recsys_go/pkg/featurestore"
 	"recsys_go/pkg/recsyskit"
 	"recsys_go/pkg/recsyskit/transporthttp"
 	"recsys_go/services/recommend/internal/recall"
@@ -59,7 +58,7 @@ func TestFunnelFiltersHighExposureItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := NewRecommendFunnel(client, featurestore.NoOp, lib, recall.NewRegistry(nil))
+	rec := NewRecommendFunnel(client, demoTestFetcher{}, lib, recall.NewRegistry(nil))
 	resp, err := rec.Handle(context.Background(), &transporthttp.RecommendRequestJSON{
 		UUID:     "t",
 		UserID:   1,
