@@ -16,6 +16,13 @@
           ],
           "RecallAndMergeList": [
             {
+              "RecallType": "CrossTag7d",
+              "RecallNum": 8,
+              "MergeMaxNum": 6,
+              "UseTopKIndex": 3,
+              "SampleFold": 1
+            },
+            {
               "RecallType": "CollaborativeFiltering",
               "RecallNum": 20,
               "MergeMaxNum": 10,

@@ -23,6 +23,11 @@ func (reg *Registry) Lane(ctx context.Context, rctx recsyskit.RequestContext, ru
 		return nil, nil
 	}
 	if reg.recall != nil {
+		if featurestore.IsCrossTagRecallType(rule.RecallType) {
+			if items, ok := crossTagLane(ctx, reg.recall, rctx.UserID, rule); ok {
+				return items, nil
+			}
+		}
 		if items, ok := reg.laneFromRedis(ctx, rctx.UserID, rule.RecallType, n); ok {
 			return items, nil
 		}

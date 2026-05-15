@@ -18,8 +18,10 @@ const (
 
 // Recall — non-personalized lane = single list; CF = per-user list (C++ invert ZSET vs user CF).
 const (
-	KeyRecallLanePrefix   = "recsysgo:recall:lane:"       // + RecallType e.g. LiveRedirect
-	DefaultRecallCFUserKey = "recsysgo:recall:cf:user:%d" // JSON [item_ids...]
+	KeyRecallLanePrefix        = "recsysgo:recall:lane:"                 // + RecallType (non-personalized list)
+	DefaultRecallCFUserKey     = "recsysgo:recall:cf:user:%d"            // personalized CF item list
+	DefaultTagInterestUserKey  = "recsysgo:recall:taginterest:%s:user:%d" // %s=7d|14d|30d
+	DefaultTagInvertKey        = "recsysgo:recall:invert:tag:%d"         // tag id -> item id list (invert)
 )
 
 type KeyPatterns struct {
@@ -31,8 +33,10 @@ type StrategyKeyPatterns struct {
 	FilterExposure    string
 	FilterFeatureLess string
 	FilterLabel       string
-	RecallLanePrefix  string
-	RecallCFUser      string
+	RecallLanePrefix   string
+	RecallCFUser       string
+	TagInterestUser    string // fmt pattern: window, uin
+	TagInvert          string // fmt pattern: tag id
 }
 
 func DefaultKeyPatterns() KeyPatterns {
@@ -44,8 +48,10 @@ func DefaultStrategyKeyPatterns() StrategyKeyPatterns {
 		FilterExposure:    KeyFilterExposure,
 		FilterFeatureLess: KeyFilterFeatureLess,
 		FilterLabel:       KeyFilterLabel,
-		RecallLanePrefix:  KeyRecallLanePrefix,
-		RecallCFUser:      DefaultRecallCFUserKey,
+		RecallLanePrefix: KeyRecallLanePrefix,
+		RecallCFUser:     DefaultRecallCFUserKey,
+		TagInterestUser:  DefaultTagInterestUserKey,
+		TagInvert:        DefaultTagInvertKey,
 	}
 }
 
@@ -58,6 +64,14 @@ func (p StrategyKeyPatterns) RecallLaneKey(lane string) string {
 
 func (p StrategyKeyPatterns) RecallCFUserKey(uin int64) string {
 	return fmt.Sprintf(p.RecallCFUser, uin)
+}
+
+func (p StrategyKeyPatterns) TagInterestUserKey(window string, uin int64) string {
+	return fmt.Sprintf(p.TagInterestUser, window, uin)
+}
+
+func (p StrategyKeyPatterns) TagInvertKey(tagID int) string {
+	return fmt.Sprintf(p.TagInvert, tagID)
 }
 
 type FutureKeyKinds struct {

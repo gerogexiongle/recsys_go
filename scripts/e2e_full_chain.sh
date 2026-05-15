@@ -60,6 +60,10 @@ assert 910005 not in ids, "910005 must be filtered by LiveExposure (exposure=15)
 assert 910009 not in ids, "910009 must be filtered by FeatureLess"
 assert 910001 in ids, "910001 LiveRedirect should survive merge/filter"
 assert len(ids) >= 3, "expected at least 3 items"
+recall_types = {r.get("recall_type") for r in resp.get("recall") or []}
+assert "CrossTag7d" in recall_types, f"CrossTag7d lane missing in recall meta {recall_types}"
+cross_ids = [r["item_id"] for r in (resp.get("recall") or []) if r.get("recall_type") == "CrossTag7d"]
+assert any(i in cross_ids for i in (910006, 910007, 910008)), f"CrossTag7d invert recall expected 910006-910008, got {cross_ids}"
 # ForcedInsert: LiveRedirect 910001 should be near front
 assert ids[0] == 910001, f"ForcedInsert expects 910001 first, got {ids[0]}"
 # FM order: highest ctr item 910010 should appear before low ctr among returned

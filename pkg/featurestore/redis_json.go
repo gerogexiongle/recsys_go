@@ -76,6 +76,14 @@ func (r *RedisJSONFetcher) RecallCFUserJSON(ctx context.Context, uin int64) ([]b
 	return r.getMissing(ctx, r.sk.RecallCFUserKey(uin))
 }
 
+func (r *RedisJSONFetcher) UserTagInterestJSON(ctx context.Context, window string, uin int64) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.TagInterestUserKey(window, uin))
+}
+
+func (r *RedisJSONFetcher) TagInvertJSON(ctx context.Context, tagID int) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.TagInvertKey(tagID))
+}
+
 func (r *RedisJSONFetcher) mgetByItemIDs(ctx context.Context, itemIDs []int64, keyFn func(int64) string) (map[int64][]byte, error) {
 	out := make(map[int64][]byte, len(itemIDs))
 	if len(itemIDs) == 0 {

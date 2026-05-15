@@ -205,8 +205,12 @@ flowchart TD
 | Label 白名单 | `recsysgo:filter:label` | JSON map `item_id→label` | 无法按 label 命中 |
 | 非个性化召回 | `recsysgo:recall:lane:{RecallType}` | JSON 物品 id 列表 | 回退代码 stub |
 | 协同过滤（个性化） | `recsysgo:recall:cf:user:%d` | JSON 物品 id 列表 | 回退 stub |
+| CrossTag 兴趣（个性化） | `recsysgo:recall:taginterest:7d:user:%d` | JSON `[{"tag":3,"weight":0.7},…]`，tag 为物品类别 0..N | 该路召回为空 |
+| Tag 倒排（按类别） | `recsysgo:recall:invert:tag:%d` | JSON 物品 id 列表 | 该 tag 无候选 |
 
-**仅画像与 CF 按实体分 key**；过滤为单 key 合并 JSON；展控用画像即可。见 `pkg/featurestore/keys.go`。
+**CrossTag7d**（对齐 C++ `TagRecall`）：读用户 7 日 tag 兴趣 → 按权重分配每 tag 召回数 → 查 `invert:tag:{id}` 取物品。物品画像 `feat:item` 可含 `"tag":` 字段（灌数脚本据此建倒排）。
+
+**仅画像与 CF / tag 兴趣按实体分 key**；过滤为单 key 合并 JSON；展控用画像即可。见 `pkg/featurestore/keys.go`。
 
 密码：`FeatureRedis.Crypto=true` 时使用与线上一致的 AES 密文（`pkg/redisdecrypt`），明文密码通过 `EncryptPassword` 生成 hex 写入配置。
 

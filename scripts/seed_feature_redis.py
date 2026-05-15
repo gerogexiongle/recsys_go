@@ -95,16 +95,44 @@ def main():
         "recsysgo:feat:user:900002",
         json.dumps({"user_profile": {"age": 62.0, "gender": 0.0}, "user_finance": {"income_wan": 8.2}}),
     )
+    # item tag = category id 0..5 (see README); used to build invert index
+    item_tags = {
+        910001: 1, 910002: 1, 910003: 2, 910004: 2, 910005: 3,
+        910006: 3, 910007: 4, 910008: 4, 910009: 5, 910010: 5,
+    }
+    invert_by_tag = {}
     for idx in range(10):
         item_id = 910001 + idx
+        tag = item_tags[item_id]
         ctr = 0.012 + 0.014 * idx
         rev = 8000.0 + 7200.0 * idx + (item_id % 97) * 13.0
-        r.set(f"recsysgo:feat:item:{item_id}", json.dumps({"ctr_7d": round(ctr, 6), "revenue_7d": round(rev, 2)}))
+        r.set(
+            f"recsysgo:feat:item:{item_id}",
+            json.dumps({"tag": tag, "ctr_7d": round(ctr, 6), "revenue_7d": round(rev, 2)}),
+        )
+        invert_by_tag.setdefault(tag, []).append(item_id)
+
+    for tag, ids in sorted(invert_by_tag.items()):
+        key = f"recsysgo:recall:invert:tag:{tag}"
+        r.set(key, json.dumps(ids))
+        print("SET", key, ids)
+
+    # CrossTag7d: user tag interest 7d (personalized, C++ tag_time_7d)
+    r.set(
+        "recsysgo:recall:taginterest:7d:user:900001",
+        json.dumps([{"tag": 3, "weight": 0.7}, {"tag": 4, "weight": 0.3}]),
+    )
+    r.set(
+        "recsysgo:recall:taginterest:7d:user:900002",
+        json.dumps([{"tag": 1, "weight": 0.8}, {"tag": 2, "weight": 0.2}]),
+    )
+    print("SET recsysgo:recall:taginterest:7d:user:900001/900002")
 
     r.set("recsysgo:filter:exposure", json.dumps({"910005": 15}))
     r.set("recsysgo:filter:featureless", json.dumps([910009]))
     r.set("recsysgo:recall:lane:LiveRedirect", json.dumps([910001, 910002, 910003]))
-    r.set("recsysgo:recall:cf:user:900001", json.dumps([910010, 910008, 910007, 910006, 910004, 910003]))
+  # CF list disjoint from CrossTag invert (tag 3/4) so merge keeps CrossTag7d recall_type on 910006-910008
+    r.set("recsysgo:recall:cf:user:900001", json.dumps([910010, 910004, 910003, 910002]))
     r.set("recsysgo:recall:cf:user:900002", json.dumps([910010, 910008, 910007, 910006]))
 
     print("Done: feat per entity; filter/recall merged keys.")
