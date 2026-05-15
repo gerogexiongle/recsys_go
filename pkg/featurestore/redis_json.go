@@ -3,6 +3,7 @@ package featurestore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -34,9 +35,12 @@ func NewRedisJSONFetcher(cfg RedisJSONConfig) (*RedisJSONFetcher, error) {
 		sk = DefaultStrategyKeyPatterns()
 	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Addr,
-		Password: cfg.Password,
-		DB:       cfg.DB,
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
+		DialTimeout:  3 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 3 * time.Second,
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		return nil, err

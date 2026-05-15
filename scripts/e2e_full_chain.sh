@@ -14,6 +14,8 @@ echo "==> Phases: ${PHASES}"
 
 echo "==> Seed Redis at ${RECSYS_REDIS_HOST}:${RECSYS_REDIS_PORT}"
 e2e_seed_redis
+echo "==> Preflight Redis TCP"
+e2e_preflight_redis || { echo "FAIL: cannot reach Redis; export RECSYS_REDIS_HOST"; exit 1; }
 e2e_free_ports
 echo "==> Build"
 e2e_build
@@ -119,13 +121,14 @@ if [[ ",${PHASES}," == *",lb,"* ]]; then
 
   count_rank_hits() {
     if [[ -f "${RANK_LOG:-}" ]]; then
-      grep -c 'POST /v1/rank/multi' "$RANK_LOG" 2>/dev/null || echo 0
+      local c
+      c="$(grep -c 'POST /v1/rank/multi' "$RANK_LOG" 2>/dev/null || true)"
+      echo "${c:-0}"
     else
       echo 0
     fi
   }
-  RANK_BEFORE="$(count_rank_hits)"
-  RANK_BEFORE="${RANK_BEFORE:-0}"
+  RANK_BEFORE="$(count_rank_hits | tail -1 | tr -d '[:space:]')"
 
   for i in 1 2 3 4 5 6; do
     curl -sf -m 15 -X POST http://127.0.0.1:18080/v1/recommend \
@@ -133,7 +136,7 @@ if [[ ",${PHASES}," == *",lb,"* ]]; then
       -d "{\"uuid\":\"lb-e2e-$i\",\"user_id\":900001,\"exp_ids\":[0],\"ret_count\":5}" \
       | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("item_ids"), r'
   done
-  RANK_AFTER="$(count_rank_hits)"
+  RANK_AFTER="$(count_rank_hits | tail -1 | tr -d '[:space:]')"
   DELTA=$((RANK_AFTER - RANK_BEFORE))
   echo "rank calls delta: $DELTA (expect >= 6)"
   [[ "$DELTA" -ge 6 ]] || { tail -30 "$RANK_LOG"; exit 1; }
