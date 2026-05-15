@@ -1,0 +1,25 @@
+{
+  "MapRecommend": [
+    {
+      "exp_id": 0,
+      "UserGroupList": [
+        {
+          "UserGroup": "def_group",
+          "KeepItemNum": 50,
+          "RuleFilterStrategyList": [
+            {
+              "FilterType": "LiveExposure",
+              "ValidityTime": 604800,
+              "ExposureLimit": 3
+            }
+          ],
+          "FeatureFilterStrategyList": [
+            {
+              "FilterType": "FeatureLess"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

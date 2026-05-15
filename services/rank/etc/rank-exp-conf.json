@@ -1,0 +1,51 @@
+{
+  "PreRankExp": [
+    {
+      "exp_id": 0,
+      "StrategyList": [
+        {
+          "Platform": "FMModel",
+          "FeatureName": "FMFeature",
+          "ModelName": "online_prerank_ctr_1",
+          "TruncCount": 0
+        }
+      ]
+    },
+    {
+      "exp_id": 101,
+      "StrategyList": [
+        {
+          "Platform": "FMModel",
+          "FeatureName": "FMFeature",
+          "ModelName": "online_prerank_ctr_1",
+          "TruncCount": 80
+        }
+      ]
+    }
+  ],
+  "RankExp": [
+    {
+      "exp_id": 0,
+      "StrategyList": [
+        {
+          "Platform": "TensorFlow",
+          "FeatureName": "FMFeature",
+          "ModelName": "online_model_1",
+          "TruncCount": 200
+        }
+      ]
+    },
+    {
+      "exp_id": 102,
+      "StrategyList": [
+        {
+          "Platform": "TensorFlow",
+          "FeatureName": "FMFeature",
+          "ModelName": "online_model_1_alt",
+          "TruncCount": 20
+        }
+      ]
+    }
+  ],
+  "ReRankExp": []
+}

@@ -1,0 +1,128 @@
+{
+  "MapRecommend": [
+    {
+      "exp_id": 0,
+      "UserGroupList": [
+        {
+          "UserGroup": "def_group",
+          "AllMergeNum": 2000,
+          "FilterPolicies": [
+            {
+              "Type": "exposure_backoff",
+              "BackoffAfter": 10
+            }
+          ],
+          "ExclusiveRecallList": [
+            {
+              "RecallType": "LiveRedirect",
+              "RecallNum": 3,
+              "MergeMaxNum": 3,
+              "SampleFold": 1
+            }
+          ],
+          "RecallAndMergeList": [
+            {
+              "RecallType": "CollaborativeFiltering",
+              "RecallNum": 100,
+              "MergeMaxNum": 7,
+              "SampleFold": 1
+            },
+            {
+              "RecallType": "LiveTag",
+              "RecallNum": 40,
+              "MergeMaxNum": 20,
+              "SampleFold": 2
+            }
+          ],
+          "FinalRetCount": 5,
+          "ShowControl": {
+            "MaxItems": 100
+          },
+          "FilterAb": [
+            {
+              "exp_id": 0,
+              "FilterPolicies": [
+                {
+                  "Type": "exposure_backoff",
+                  "BackoffAfter": 10
+                }
+              ]
+            },
+            {
+              "exp_id": 100,
+              "FilterPolicies": [
+                {
+                  "Type": "exposure_backoff",
+                  "BackoffAfter": 8
+                }
+              ]
+            }
+          ],
+          "RecallAb": [
+            {
+              "exp_id": 0,
+              "ExclusiveRecallList": [
+                {
+                  "RecallType": "LiveRedirect",
+                  "RecallNum": 3,
+                  "MergeMaxNum": 3,
+                  "SampleFold": 1
+                }
+              ],
+              "RecallAndMergeList": [
+                {
+                  "RecallType": "CollaborativeFiltering",
+                  "RecallNum": 100,
+                  "MergeMaxNum": 7,
+                  "SampleFold": 1
+                },
+                {
+                  "RecallType": "LiveTag",
+                  "RecallNum": 40,
+                  "MergeMaxNum": 20,
+                  "SampleFold": 2
+                }
+              ]
+            }
+          ],
+          "ShowAb": [
+            {
+              "exp_id": 0,
+              "ShowControl": {
+                "MaxItems": 100
+              }
+            },
+            {
+              "exp_id": 103,
+              "ShowControl": {
+                "MaxItems": 30
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "exp_id": 1,
+      "UserGroupList": [
+        {
+          "UserGroup": "def_group",
+          "AllMergeNum": 500,
+          "ExclusiveRecallList": [],
+          "RecallAndMergeList": [
+            {
+              "RecallType": "CollaborativeFiltering",
+              "RecallNum": 30,
+              "MergeMaxNum": 30,
+              "SampleFold": 1
+            }
+          ],
+          "FinalRetCount": 3,
+          "ShowControl": {
+            "MaxItems": 10
+          }
+        }
+      ]
+    }
+  ]
+}

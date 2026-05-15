@@ -1,0 +1,36 @@
+{
+  "MapRecommend": [
+    {
+      "exp_id": 0,
+      "UserGroupList": [
+        {
+          "UserGroup": "def_group",
+          "AllMergeNum": 200,
+          "ExclusiveRecallList": [
+            {
+              "RecallType": "LiveRedirect",
+              "RecallNum": 3,
+              "MergeMaxNum": 3,
+              "UseTopKIndex": 2
+            }
+          ],
+          "RecallAndMergeList": [
+            {
+              "RecallType": "CollaborativeFiltering",
+              "RecallNum": 20,
+              "MergeMaxNum": 10,
+              "SampleFold": 1
+            },
+            {
+              "RecallType": "LiveTag",
+              "RecallNum": 15,
+              "MergeMaxNum": 8,
+              "SampleFold": 2
+            }
+          ],
+          "FinalRetCount": 5
+        }
+      ]
+    }
+  ]
+}

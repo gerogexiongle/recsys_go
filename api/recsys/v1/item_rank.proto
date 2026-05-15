@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package recsys.v1;
+
+option go_package = "recsys_go/api/gen/recsys/v1;recsysv1";
+
+// Item-centric rank API (wire with protoc when available). REST JSON mirrors these fields.
+
+message ItemGroup {
+  string name = 1;
+  repeated int64 item_ids = 2;
+  int32 ret_count = 3;
+}
+
+message MultiItemRankRequest {
+  string uuid = 1;
+  int64 user_id = 2;
+  int32 section = 3;
+  repeated int32 exp_ids = 4;
+  int32 disable_personal = 5;
+  string device_id = 6;
+  string terminal_model = 7;
+  string os_type = 8;
+  repeated ItemGroup item_groups = 9;
+}
+
+message ExpInfo {
+  int32 pre_rank_exp_id = 1;
+  int32 rank_exp_id = 2;
+  int32 re_rank_exp_id = 3;
+}
+
+message ItemScores {
+  int64 item_id = 1;
+  float pre_rank_score = 2;
+  float rank_score = 3;
+  float re_rank_score = 4;
+}
+
+message RankedItemGroup {
+  string name = 1;
+  repeated ItemScores item_scores = 2;
+}
+
+message MultiItemRankResponse {
+  string uuid = 1;
+  int64 user_id = 2;
+  ExpInfo exp = 3;
+  repeated RankedItemGroup ranked_groups = 4;
+}
+
+service ItemRank {
+  rpc MultiRank(MultiItemRankRequest) returns (MultiItemRankResponse);
+}

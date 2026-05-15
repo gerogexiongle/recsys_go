@@ -1,0 +1,28 @@
+Name: recommend-api
+Host: 0.0.0.0
+Port: 18080
+Timeout: 5000
+Log:
+  Mode: console
+
+# 单文件漏斗（旧）：recommend-funnel.json。与 C++ 对齐的三文件（优先）：
+#   recommend-recall.json / recommend-filter.json / recommend-showcontrol.json
+FunnelConfigPath: ""
+CenterRecallPath: "recommend-recall.json"
+CenterFilterPath: "recommend-filter.json"
+CenterShowControlPath: "recommend-showcontrol.json"
+
+# 与 rank 共用 FeatureRedis（center 在 merge 后拉用户/物品 JSON，rank 排序时再拉一次）
+FeatureRedis:
+  Disabled: false
+  Host: 172.31.0.80
+  Port: 6379
+  DB: 0
+  Crypto: true
+  PasswordHex: "d1c98bea6a9824201ac9375488748b3c07"
+  UserKeyPattern: "recsysgo:user:%d"
+  ItemKeyPattern: "recsysgo:item:%d"
+
+RankService:
+  BaseURL: http://127.0.0.1:18081
+  TimeoutMs: 800

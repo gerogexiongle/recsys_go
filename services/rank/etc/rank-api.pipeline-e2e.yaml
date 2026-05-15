@@ -1,0 +1,86 @@
+Name: rank-api
+Host: 0.0.0.0
+Port: 18081
+Timeout: 3000
+Log:
+  Mode: console
+
+# Local / lab: FM PreRank from testdata/fm_5feat.txt (5 semantic slots), TF off, Redis JSON features on.
+RankEngine:
+  Mode: pipeline
+  FM:
+    Factor: 4
+    ModelPath: services/rank/internal/rankengine/testdata/fm_5feat.txt
+    TransPath: ""
+  TFServing:
+    BaseURL: ""
+    ModelName: ""
+    SignatureName: "serving_default"
+    InputTensor: "inputs"
+    FeatureDim: 8
+    TimeoutMs: 1500
+  PreRankTrunc: 0
+  RankTrunc: 0
+
+RankProfiles:
+  fm5_alt:
+    Mode: pipeline
+    FM:
+      Factor: 4
+      ModelPath: services/rank/internal/rankengine/testdata/fm_5feat.txt
+      TransPath: ""
+    TFServing:
+      BaseURL: ""
+      ModelName: ""
+      SignatureName: "serving_default"
+      InputTensor: "inputs"
+      FeatureDim: 8
+      TimeoutMs: 1500
+    PreRankTrunc: 0
+    RankTrunc: 0
+
+RankExpConfPath: rank-exp-conf.json
+
+RankModelBundles:
+  "online_prerank_ctr_1|online_model_1":
+    Mode: pipeline
+    FM:
+      Factor: 4
+      ModelPath: services/rank/internal/rankengine/testdata/fm_5feat.txt
+      TransPath: ""
+    TFServing:
+      BaseURL: ""
+      ModelName: "online_model_1"
+      SignatureName: "serving_default"
+      InputTensor: "inputs"
+      FeatureDim: 8
+      TimeoutMs: 1500
+      OutputName: "predictions"
+    PreRankTrunc: 0
+    RankTrunc: 0
+  "online_prerank_ctr_1|online_model_1_alt":
+    Mode: pipeline
+    FM:
+      Factor: 4
+      ModelPath: services/rank/internal/rankengine/testdata/fm_5feat.txt
+      TransPath: ""
+    TFServing:
+      BaseURL: ""
+      ModelName: "online_model_1_alt"
+      SignatureName: "serving_default"
+      InputTensor: "inputs"
+      FeatureDim: 8
+      TimeoutMs: 1500
+      OutputName: "predictions"
+    PreRankTrunc: 0
+    RankTrunc: 0
+
+FeatureRedis:
+  Disabled: false
+  Host: 172.31.0.80
+  Port: 6379
+  DB: 0
+  Crypto: true
+  PasswordHex: "d1c98bea6a9824201ac9375488748b3c07"
+  UserKeyPattern: "recsysgo:user:%d"
+  ItemKeyPattern: "recsysgo:item:%d"

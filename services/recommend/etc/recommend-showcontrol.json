@@ -1,0 +1,36 @@
+{
+  "MapRecommend": [
+    {
+      "exp_id": 0,
+      "UserGroupList": [
+        {
+          "UserGroup": "def_group",
+          "StrategyList": [
+            {
+              "ShowControlType": "ScoreControl",
+              "Method": "RecallType",
+              "RecallTypeList": "LiveRedirect,CollaborativeFiltering",
+              "ScoreControlFactor": 1.2,
+              "Comment": "FM demo: boost selected recall lanes after rank"
+            },
+            {
+              "ShowControlType": "HomogenContent",
+              "TopNShowControl": 20,
+              "Comment": "cap list before response"
+            },
+            {
+              "ShowControlType": "ForcedInsert",
+              "ForcedInsert": [
+                {
+                  "RecallType": "LiveRedirect",
+                  "ForcedInsertCount": 1,
+                  "ExtractMethod": "TopNOrder"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
