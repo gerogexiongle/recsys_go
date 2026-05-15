@@ -61,8 +61,16 @@ def main():
     r = redis.StrictRedis(host="algo-cn-live-redis.mini1.cn", port=6379, password=password)
     r.ping()
 
-    keys = [f"recsysgo:user:{u}" for u in (900001, 900002)]
-    keys += [f"recsysgo:item:{i}" for i in range(910001, 910011)]
+    keys = []
+    for u in (900001, 900002):
+        keys.append(f"recsysgo:feat:user:{u}")
+        keys.append(f"recsysgo:filter:exposure:user:{u}")
+        keys.append(f"recsysgo:user:{u}")  # legacy
+    for i in range(910001, 910011):
+        keys.append(f"recsysgo:feat:item:{i}")
+        keys.append(f"recsysgo:filter:featureless:item:{i}")
+        keys.append(f"recsysgo:filter:label:item:{i}")
+        keys.append(f"recsysgo:item:{i}")  # legacy
 
     for k in keys:
         n = r.delete(k)

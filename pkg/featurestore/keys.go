@@ -2,50 +2,74 @@ package featurestore
 
 import "fmt"
 
-// Key patterns for Go lab / OSS (STRING JSON per entity).
+// Key layout mirrors C++ online_map_center: profile HASH fields vs side-channel proto types.
 //
-// C++ online_map_center / online_map_rank use Redis HASH on pool UserFeature_0:
-//   HGET {map_feature:proto:{id%10000}} FIELD {id}:outer
-//   HGET {user_feature:proto:{uin%100000}} FIELD {uin}:game_exposure
-// Other pools (OnlineData, MaterialData) hold invert ZSET / whitelist SET — not covered here yet.
-//
-// Go keeps one STRING per user/item for FM+filter sidecars; rank and center share the same fetcher.
+// Profile (FM / rank only) — missing key => no user/item portrait; rank uses placeholder sparse.
 const (
-	DefaultUserKeyPattern = "recsysgo:user:%d"
-	DefaultItemKeyPattern = "recsysgo:item:%d"
+	DefaultUserFeatKeyPattern = "recsysgo:feat:user:%d"
+	DefaultItemFeatKeyPattern = "recsysgo:feat:item:%d"
 )
 
-// KeyPatterns builds Redis STRING keys for FM / filter JSON documents.
+// Filter strategy keys — each FilterType reads its own namespace (adjust data without touching feat JSON).
+// Missing key semantics (align C++ GetProtoDataEmpty):
+//   - exposure user key missing => empty exposure map => LiveExposure does not filter
+//   - featureless item key missing => item treated as having features => FeatureLess keeps item
+//   - label item key missing => LabelTypeWhiteList cannot match label
+const (
+	DefaultUserExposureKeyPattern     = "recsysgo:filter:exposure:user:%d"
+	DefaultItemFeatureLessKeyPattern  = "recsysgo:filter:featureless:item:%d"
+	DefaultItemLabelKeyPattern        = "recsysgo:filter:label:item:%d"
+)
+
+// KeyPatterns builds Redis STRING keys for profile JSON.
 type KeyPatterns struct {
-	User string // fmt pattern with one %d (uin)
-	Item string // fmt pattern with one %d (item/map id)
+	UserFeat string
+	ItemFeat string
 }
 
-// DefaultKeyPatterns returns OSS lab prefixes (see scripts/seed_feature_redis.py).
+// StrategyKeyPatterns builds Redis STRING keys for non-profile strategies.
+type StrategyKeyPatterns struct {
+	UserExposure    string
+	ItemFeatureLess string
+	ItemLabel       string
+}
+
 func DefaultKeyPatterns() KeyPatterns {
-	return KeyPatterns{User: DefaultUserKeyPattern, Item: DefaultItemKeyPattern}
+	return KeyPatterns{UserFeat: DefaultUserFeatKeyPattern, ItemFeat: DefaultItemFeatKeyPattern}
 }
 
-func (p KeyPatterns) UserKey(uin int64) string {
-	return fmt.Sprintf(p.User, uin)
+func DefaultStrategyKeyPatterns() StrategyKeyPatterns {
+	return StrategyKeyPatterns{
+		UserExposure:    DefaultUserExposureKeyPattern,
+		ItemFeatureLess: DefaultItemFeatureLessKeyPattern,
+		ItemLabel:       DefaultItemLabelKeyPattern,
+	}
 }
 
-func (p KeyPatterns) ItemKey(itemID int64) string {
-	return fmt.Sprintf(p.Item, itemID)
+func (p KeyPatterns) UserKey(uin int64) string  { return fmt.Sprintf(p.UserFeat, uin) }
+func (p KeyPatterns) ItemKey(itemID int64) string { return fmt.Sprintf(p.ItemFeat, itemID) }
+
+func (p StrategyKeyPatterns) UserExposureKey(uin int64) string {
+	return fmt.Sprintf(p.UserExposure, uin)
+}
+
+func (p StrategyKeyPatterns) ItemFeatureLessKey(itemID int64) string {
+	return fmt.Sprintf(p.ItemFeatureLess, itemID)
+}
+
+func (p StrategyKeyPatterns) ItemLabelKey(itemID int64) string {
+	return fmt.Sprintf(p.ItemLabel, itemID)
 }
 
 // FutureKeyKinds documents C++-style keys for later adapters (invert / material).
 type FutureKeyKinds struct {
-	// InvertTagRecall: online_tag_recall_{SECTION}_5pcts_{tag_id} on OnlineData (ZSET).
-	InvertTagRecall string
-	// MaterialSuppress: cached suppress map list on MaterialData.
+	InvertTagRecall  string
 	MaterialSuppress string
 }
 
-// CppFutureKeys is reference naming only; not used by current Go fetcher.
 func CppFutureKeys() FutureKeyKinds {
 	return FutureKeyKinds{
-		InvertTagRecall: "online_tag_recall_%s_5pcts_%d",
+		InvertTagRecall:  "online_tag_recall_%s_5pcts_%d",
 		MaterialSuppress: "online_suppress_map",
 	}
 }

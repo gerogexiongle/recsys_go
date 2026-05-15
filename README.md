@@ -32,7 +32,7 @@ flowchart TB
   end
 
   subgraph Redis["Redis（特征 / 过滤侧车）"]
-    UK["STRING recsysgo:user:{id}"]
+    UK["STRING recsysgo:feat:user:{id}"]
     IK["STRING recsysgo:item:{id}"]
   end
 
@@ -196,12 +196,15 @@ flowchart TD
 
 ## 6. Redis Key 约定（开源默认）
 
-| 用途 | Key 模式 | 值格式 |
-|------|----------|--------|
-| 用户特征 + 过滤侧车 | `recsysgo:user:%d` | JSON：`age`, `gender`, `exposure`, … |
-| 物品特征 + 过滤侧车 | `recsysgo:item:%d` | JSON：`ctr_7d`, `feature_less`, `label`, … |
+| 用途 | Key 模式 | 值格式 | key 不存在时 |
+|------|----------|--------|--------------|
+| 用户画像（FM） | `recsysgo:feat:user:%d` | JSON：`age`, `gender`, `income_wan`, … | rank 无用户画像槽位 |
+| 物品画像（FM） | `recsysgo:feat:item:%d` | JSON：`ctr_7d`, `revenue_7d`, `fm_sparse`, … | rank 无物品画像槽位 |
+| LiveExposure | `recsysgo:filter:exposure:user:%d` | JSON：`{"910005":15}` | 无曝光数据，不按曝光过滤 |
+| FeatureLess | `recsysgo:filter:featureless:item:%d` | `"1"` | **视为有特征**，不过滤 |
+| Label 白名单 | `recsysgo:filter:label:item:%d` | 纯文本 label | 无法按 label 命中 |
 
-生产环境常见为 **HASH 分桶**（多 field）；本仓库用 **STRING 整包 JSON** 降低演示复杂度，接口层 `Fetcher` 可扩展倒排 ZSET、物料集合等（见 `pkg/featurestore/keys.go` 中 `FutureKeyKinds`）。
+过滤/召回/展控等非画像数据 **不与 feat key 混写**（对齐 C++ `game_exposure` 等独立 proto field）。生产常见 **HASH 分桶**；本仓库用 **STRING** 降低演示复杂度。见 `pkg/featurestore/strategy.go` 与各 `FilterType` 读取逻辑。
 
 密码：`FeatureRedis.Crypto=true` 时使用与线上一致的 AES 密文（`pkg/redisdecrypt`），明文密码通过 `EncryptPassword` 生成 hex 写入配置。
 

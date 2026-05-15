@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-Seed recsys_go E2E data: 2 users + 10 items (910001-910010) for FM 5-feature pipeline.
+Seed recsys_go E2E data: profile feat keys + separate filter strategy keys.
 
-Keys: recsysgo:user:%d, recsysgo:item:%d (STRING JSON).
+Profile (FM / rank):
+  recsysgo:feat:user:%d
+  recsysgo:feat:item:%d
+
+Filter strategies (center only; missing key => strategy inactive, see pkg/featurestore/strategy.go):
+  recsysgo:filter:exposure:user:%d   JSON {"910005":15}
+  recsysgo:filter:featureless:item:%d  "1" only when item should be filtered
+  recsysgo:filter:label:item:%d      plain label string (optional)
 
 Usage:
   RECSYS_SEED_REDIS=1 python3 scripts/seed_feature_redis.py
-
-Env (defaults match recommend/rank yaml):
-  RECSYS_REDIS_HOST=172.31.0.80
-  RECSYS_REDIS_PORT=6379
-  RECSYS_REDIS_PASSWORD_HEX=d1c98bea6a9824201ac9375488748b3c07  # plain: test123
-  RECSYS_REDIS_CRYPTO=1
 """
 import json
 import os
@@ -68,6 +69,14 @@ def _create_redis_client(host, port, crypto, password_hex):
     return redis_client
 
 
+def _del_legacy_keys(r):
+    legacy = [f"recsysgo:user:{u}" for u in (900001, 900002)]
+    legacy += [f"recsysgo:item:{i}" for i in range(910001, 910011)]
+    for k in legacy:
+        if r.delete(k):
+            print("DEL legacy", k)
+
+
 def main():
     if os.environ.get("RECSYS_SEED_REDIS") != "1":
         print("Set RECSYS_SEED_REDIS=1 to write keys.", file=sys.stderr)
@@ -83,25 +92,18 @@ def main():
 
     r = _create_redis_client(host, port, crypto, pwd_hex)
     print(f"Connected redis {host}:{port}")
+    _del_legacy_keys(r)
 
-    # User 900001: flat semantic + exposure for LiveExposure filter (910005 filtered when limit=3)
+    # Profile: user 900001 (flat semantic)
     r.set(
-        "recsysgo:user:900001",
-        json.dumps(
-            {
-                "age": 38.0,
-                "gender": 1.0,
-                "income_wan": 6.5,
-                "exposure": {"910005": 15},
-            },
-            separators=(",", ":"),
-        ),
+        "recsysgo:feat:user:900001",
+        json.dumps({"age": 38.0, "gender": 1.0, "income_wan": 6.5}, separators=(",", ":")),
     )
-    print("SET recsysgo:user:900001")
+    print("SET recsysgo:feat:user:900001")
 
-    # User 900002: nested segments (rank merge path)
+    # Profile: user 900002 (nested segments for rank merge path)
     r.set(
-        "recsysgo:user:900002",
+        "recsysgo:feat:user:900002",
         json.dumps(
             {
                 "user_profile": {"age": 62.0, "gender": 0.0},
@@ -110,22 +112,35 @@ def main():
             separators=(",", ":"),
         ),
     )
-    print("SET recsysgo:user:900002")
+    print("SET recsysgo:feat:user:900002")
 
-    # Items 910001-910010: ctr/revenue rise with id -> FM PreRank orders 910010 highest
+    # Strategy: LiveExposure (separate from profile; C++ game_exposure field)
+    r.set(
+        "recsysgo:filter:exposure:user:900001",
+        json.dumps({"910005": 15}, separators=(",", ":")),
+    )
+    print("SET recsysgo:filter:exposure:user:900001")
+
     for idx in range(10):
         item_id = 910001 + idx
         ctr = 0.012 + 0.014 * idx
         rev = 8000.0 + 7200.0 * idx + (item_id % 97) * 13.0
-        doc = {"ctr_7d": round(ctr, 6), "revenue_7d": round(rev, 2)}
-        if item_id == 910009:
-            doc["feature_less"] = "1"
-        key = f"recsysgo:item:{item_id}"
-        r.set(key, json.dumps(doc, separators=(",", ":")))
-        print("SET", key)
+        feat_key = f"recsysgo:feat:item:{item_id}"
+        r.set(
+            feat_key,
+            json.dumps({"ctr_7d": round(ctr, 6), "revenue_7d": round(rev, 2)}, separators=(",", ":")),
+        )
+        print("SET", feat_key)
 
-    print("Done: 2 users (900001/900002), 10 items (910001-910010).")
-    print("  Filter E2E: user 900001 exposure>3 on 910005; item 910009 feature_less.")
+        if item_id == 910009:
+            fl_key = f"recsysgo:filter:featureless:item:{item_id}"
+            r.set(fl_key, "1")
+            print("SET", fl_key)
+        # 910001-910008, 910010: no featureless key => FeatureLess keeps item
+
+    print("Done: 2 users, 10 items (profile + strategy keys).")
+    print("  LiveExposure: filter:exposure:user:900001 -> 910005 filtered")
+    print("  FeatureLess: filter:featureless:item:910009 only")
     return 0
 
 

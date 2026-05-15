@@ -3,6 +3,7 @@ package config
 import (
 	"github.com/zeromicro/go-zero/rest"
 
+	"recsys_go/pkg/featurestore"
 	"recsys_go/pkg/upstream"
 )
 
@@ -59,6 +60,20 @@ type FeatureRedis struct {
 	PasswordHex    string `json:"PasswordHex,optional"`
 	UserKeyPattern string `json:"UserKeyPattern,optional"`
 	ItemKeyPattern string `json:"ItemKeyPattern,optional"`
+}
+
+// AsFeaturestore maps yaml block to pkg/featurestore.RedisConfig (rank only needs profile keys).
+func (c FeatureRedis) AsFeaturestore() featurestore.RedisConfig {
+	return featurestore.RedisConfig{
+		Disabled:       c.Disabled,
+		Host:           c.Host,
+		Port:           c.Port,
+		DB:             c.DB,
+		Crypto:         c.Crypto,
+		PasswordHex:    c.PasswordHex,
+		UserKeyPattern: c.UserKeyPattern,
+		ItemKeyPattern: c.ItemKeyPattern,
+	}
 }
 
 // Config is the domain-agnostic rank HTTP service (scoring / model inference).

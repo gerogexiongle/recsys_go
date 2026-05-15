@@ -20,8 +20,9 @@ FeatureRedis:
   DB: 0
   Crypto: true
   PasswordHex: "d1c98bea6a9824201ac9375488748b3c07"
-  UserKeyPattern: "recsysgo:user:%d"
-  ItemKeyPattern: "recsysgo:item:%d"
+  # Profile keys (FM/rank). Strategy keys use defaults in pkg/featurestore/keys.go
+  UserKeyPattern: "recsysgo:feat:user:%d"
+  ItemKeyPattern: "recsysgo:feat:item:%d"
 
 RankService:
   # Single instance or K8s Service VIP:

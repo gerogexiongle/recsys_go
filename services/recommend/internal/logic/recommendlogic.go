@@ -54,8 +54,7 @@ func (l *Recommend) Handle(ctx context.Context, req *transporthttp.RecommendRequ
 		DeviceID:        req.DeviceID,
 		TerminalModel:   req.TerminalModel,
 		OSType:          req.OS,
-		UserGroup:       req.UserGroup,
-		Exposure:        demoExposure(req.UserID),
+		UserGroup: req.UserGroup,
 	}
 
 	if l.Center != nil && l.Recall != nil {
@@ -215,9 +214,9 @@ func (l *Recommend) rankAndShowCenter(ctx context.Context, req *transporthttp.Re
 	return buildRecommendResponse(req, items, ret), nil
 }
 
-// enrichFromRedis loads user/item JSON once (C++ InitUserFeature + InitMapFeature) for filter sidecars.
+// enrichFromRedis loads profile feat + per-strategy Redis keys (C++ separate proto fields).
 func (l *Recommend) enrichFromRedis(ctx context.Context, rctx recsyskit.RequestContext, items []recsyskit.ItemInfo) ([]recsyskit.ItemInfo, recsyskit.RequestContext) {
-	if l.Features == nil || l.Features == featurestore.NoOp || len(items) == 0 {
+	if l.Features == nil || l.Features == featurestore.NoOp {
 		if rctx.Exposure == nil {
 			rctx.Exposure = demoExposure(rctx.UserID)
 		}
@@ -227,16 +226,14 @@ func (l *Recommend) enrichFromRedis(ctx context.Context, rctx recsyskit.RequestC
 	for i := range items {
 		ids[i] = int64(items[i].ID)
 	}
-	sess, err := featurestore.LoadSession(ctx, l.Features, rctx.UserID, ids)
+	cs, err := featurestore.LoadCenterSession(ctx, l.Features, rctx.UserID, ids)
 	if err != nil {
 		return items, rctx
 	}
-	if exp := sess.ExposureMap(); len(exp) > 0 {
-		rctx.Exposure = exp
-	} else if rctx.Exposure == nil {
-		rctx.Exposure = demoExposure(rctx.UserID)
+	if len(cs.Exposure) > 0 {
+		rctx.Exposure = cs.Exposure
 	}
-	return sess.EnrichItems(items), rctx
+	return cs.EnrichItems(items), rctx
 }
 
 func (l *Recommend) runRules(ctx context.Context, rctx recsyskit.RequestContext, rules []recsyskit.RecallMergeRule) ([][]recsyskit.ItemInfo, error) {

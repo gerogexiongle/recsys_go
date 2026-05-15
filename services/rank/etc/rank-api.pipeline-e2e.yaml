@@ -82,5 +82,5 @@ FeatureRedis:
   DB: 0
   Crypto: true
   PasswordHex: "d1c98bea6a9824201ac9375488748b3c07"
-  UserKeyPattern: "recsysgo:user:%d"
-  ItemKeyPattern: "recsysgo:item:%d"
+  UserKeyPattern: "recsysgo:feat:user:%d"
+  ItemKeyPattern: "recsysgo:feat:item:%d"

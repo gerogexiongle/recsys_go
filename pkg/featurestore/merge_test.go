@@ -17,10 +17,12 @@ func TestMergeUserItemJSON(t *testing.T) {
 	}
 }
 
-func TestParseUserExposure(t *testing.T) {
-	u := []byte(`{"exposure":{"910005":15,"910001":1}}`)
-	m := ParseUserExposure(u)
-	if m[910005] != 15 {
-		t.Fatalf("%+v", m)
+func TestMergeUserItemJSON_noProfileUsesPlaceholderPath(t *testing.T) {
+	sp, d, err := MergeUserItemJSON(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sp) != 0 || len(d) != 0 {
+		t.Fatalf("empty profile => empty merge sp=%d d=%d", len(sp), len(d))
 	}
 }

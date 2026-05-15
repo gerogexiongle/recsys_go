@@ -36,7 +36,7 @@ func (s *ServiceContext) EngineFor(profile string) *rankengine.Engine {
 }
 
 func NewServiceContext(c config.Config, configFilePath string) (*ServiceContext, error) {
-	fetch, err := featurestore.NewFetcher(featurestore.RedisConfig(c.FeatureRedis))
+	fetch, err := featurestore.NewFetcher(c.FeatureRedis.AsFeaturestore())
 	if err != nil {
 		return nil, fmt.Errorf("feature redis: %w", err)
 	}

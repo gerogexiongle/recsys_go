@@ -17,9 +17,6 @@ type featDoc struct {
 	IncomeWan   *float64           `json:"income_wan"`
 	CTR7d       *float64           `json:"ctr_7d"`
 	Revenue7d   *float64           `json:"revenue_7d"`
-	Exposure    map[string]int     `json:"exposure,omitempty"`
-	FeatureLess string             `json:"feature_less,omitempty"`
-	Label       string             `json:"label,omitempty"`
 	UserProfile *struct {
 		Age    *float64 `json:"age"`
 		Gender *float64 `json:"gender"`
@@ -71,45 +68,6 @@ func MergeUserItemJSON(user, item []byte) ([]SparseKV, []float64, error) {
 		dense = du.TFDense
 	}
 	return out, dense, nil
-}
-
-func ParseUserExposure(userJSON []byte) map[int64]int {
-	if len(userJSON) == 0 {
-		return nil
-	}
-	var d featDoc
-	if err := json.Unmarshal(userJSON, &d); err != nil || len(d.Exposure) == 0 {
-		return nil
-	}
-	out := make(map[int64]int, len(d.Exposure))
-	for k, v := range d.Exposure {
-		id, err := strconv.ParseInt(k, 10, 64)
-		if err == nil {
-			out[id] = v
-		}
-	}
-	return out
-}
-
-func ParseItemExtra(itemJSON []byte) map[string]string {
-	if len(itemJSON) == 0 {
-		return nil
-	}
-	var d featDoc
-	if err := json.Unmarshal(itemJSON, &d); err != nil {
-		return nil
-	}
-	extra := make(map[string]string)
-	if d.FeatureLess == "1" || d.FeatureLess == "true" {
-		extra["feature_less"] = "1"
-	}
-	if d.Label != "" {
-		extra["label"] = d.Label
-	}
-	if len(extra) == 0 {
-		return nil
-	}
-	return extra
 }
 
 func coalesceFeatDoc(d *featDoc) {
