@@ -57,7 +57,11 @@ func NewEngine(cfg config.RankEngineConfig, feat featurestore.Fetcher) (*Engine,
 			e.fm = fm
 		}
 	}
-	e.tf = NewTFPredictor(cfg.TFServing)
+	tf, err := NewTFPredictor(cfg.TFServing)
+	if err != nil {
+		return nil, err
+	}
+	e.tf = tf
 	return e, nil
 }
 

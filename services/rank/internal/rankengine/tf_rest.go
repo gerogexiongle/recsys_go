@@ -1,32 +1,35 @@
 package rankengine
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
+	"recsys_go/pkg/upstream"
 	"recsys_go/services/rank/internal/config"
 )
 
-// TFPredictor calls TensorFlow Serving REST /v1/models/{name}:predict.
+// TFPredictor calls TensorFlow Serving REST /v1/models/{name}:predict across multiple docker instances.
+// C++ online_map_rank uses gRPC (TFModelGrpc); REST is lower integration cost and enough for item-level predict in lab.
+// For batch gRPC + tensor proto, add tf_grpc.go behind TFConfig.Protocol = grpc.
 type TFPredictor struct {
-	BaseURL       string
+	doer          *upstream.HTTPDoer
 	ModelName     string
 	SignatureName string
 	InputTensor   string
 	FeatureDim    int
-	OutputName    string // ModelConf OutputName, default predictions
-	Client        *http.Client
+	OutputName    string
 }
 
-func NewTFPredictor(c config.TFConfig) *TFPredictor {
-	if c.BaseURL == "" {
-		return nil
+func NewTFPredictor(c config.TFConfig) (*TFPredictor, error) {
+	urls := c.TFEndpoints().Resolve()
+	if len(urls) == 0 {
+		return nil, nil
+	}
+	if c.ModelName == "" {
+		return nil, nil
 	}
 	dim := c.FeatureDim
 	if dim <= 0 {
@@ -48,21 +51,22 @@ func NewTFPredictor(c config.TFConfig) *TFPredictor {
 	if outName == "" {
 		outName = "predictions"
 	}
+	doer, err := upstream.NewHTTPDoer(c.TFEndpoints(), to)
+	if err != nil {
+		return nil, err
+	}
 	return &TFPredictor{
-		BaseURL:       strings.TrimRight(strings.TrimSpace(c.BaseURL), "/"),
+		doer:          doer,
 		ModelName:     c.ModelName,
 		SignatureName: sig,
 		InputTensor:   in,
 		FeatureDim:    dim,
 		OutputName:    outName,
-		Client: &http.Client{
-			Timeout: to,
-		},
-	}
+	}, nil
 }
 
 func (p *TFPredictor) Configured() bool {
-	return p != nil && p.BaseURL != "" && p.ModelName != ""
+	return p != nil && p.doer != nil && p.ModelName != ""
 }
 
 // Predict returns the first scalar from predictions (regression head).
@@ -87,23 +91,10 @@ func (p *TFPredictor) Predict(ctx context.Context, feature []float64) (float64, 
 	if err != nil {
 		return 0, err
 	}
-	url := fmt.Sprintf("%s/v1/models/%s:predict", p.BaseURL, p.ModelName)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	path := fmt.Sprintf("/v1/models/%s:predict", p.ModelName)
+	b, err := p.doer.PostBytes(ctx, path, raw, "application/json")
 	if err != nil {
 		return 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := p.Client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("tf predict http %d: %s", resp.StatusCode, string(b))
 	}
 	var out map[string]json.RawMessage
 	if err := json.Unmarshal(b, &out); err != nil {

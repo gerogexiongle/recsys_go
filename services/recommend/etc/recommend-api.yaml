@@ -24,5 +24,11 @@ FeatureRedis:
   ItemKeyPattern: "recsysgo:item:%d"
 
 RankService:
+  # Single instance or K8s Service VIP:
   BaseURL: http://127.0.0.1:18081
+  # Multi rank-api pods (round_robin | random); overrides load spread when set:
+  # Endpoints:
+  #   - http://10.0.0.11:18081
+  #   - http://10.0.0.12:18081
+  LoadBalance: round_robin
   TimeoutMs: 800

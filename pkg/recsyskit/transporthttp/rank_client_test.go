@@ -17,8 +17,11 @@ func TestRankHTTPClient_AllowsEmptyResponseWhenNoItemGroups(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := NewRankHTTPClient(ts.URL, time.Second)
-	_, err := c.MultiRank(context.Background(), &recsyskit.MultiRankRequest{
+	c, err := NewRankHTTPClientSingle(ts.URL, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.MultiRank(context.Background(), &recsyskit.MultiRankRequest{
 		Ctx:    recsyskit.RequestContext{},
 		Groups: nil,
 	})

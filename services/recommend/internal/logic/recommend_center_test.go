@@ -61,7 +61,10 @@ func TestCenterLiveExposureFilters910005(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := transporthttp.NewRankHTTPClient(ts.URL, time.Second)
+	client, err := transporthttp.NewRankHTTPClientSingle(ts.URL, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec := NewRecommendCenter(client, featurestore.NoOp, center, recall.NewRegistry())
 	resp, err := rec.Handle(context.Background(), &transporthttp.RecommendRequestJSON{
 		UUID:     "t",

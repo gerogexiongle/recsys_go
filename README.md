@@ -316,7 +316,99 @@ make e2e-full     # Redis + FM pipeline + 三文件 center 全链路
 
 ---
 
-## 11. 设计原则（开源版）
+## 11. 高并发多实例部署
+
+### 11.1 部署拓扑
+
+```mermaid
+flowchart LR
+  subgraph LB1["入口"]
+    GW[Gateway / Ingress]
+  end
+  subgraph RecPool["recommend-api × N"]
+    R1[rec-1]
+    R2[rec-2]
+    RN[rec-N]
+  end
+  subgraph RankPool["rank-api × M"]
+    K1[rank-1]
+    K2[rank-2]
+  end
+  subgraph TFPool["TF-Serving × P"]
+    T1[tf-1:8501]
+    T2[tf-2:8501]
+  end
+  GW --> R1 & R2 & RN
+  R1 & R2 & RN --> K1 & K2
+  K1 & K2 --> T1 & T2
+```
+
+- **recommend / rank**：无状态，水平扩容；实例间不共享会话。
+- **Redis**：共享特征存储；用连接池，按集群规模调大 `MaxIdleConns`。
+- **下游地址**：客户端侧 **多 Endpoints + 负载均衡**（`pkg/upstream`），不依赖 recommend 进程内嵌 rank 代码。
+
+### 11.2 Recommend → Rank 多地址
+
+`recommend-api.yaml`（**兼容原单地址 `BaseURL`**）：
+
+```yaml
+RankService:
+  BaseURL: http://rank-svc:18081          # 单 VIP / K8s Service
+  # 或直接列多 Pod（与 BaseURL 二选一或并存，会去重）：
+  Endpoints:
+    - http://10.0.0.11:18081
+    - http://10.0.0.12:18081
+  LoadBalance: round_robin   # round_robin | random
+  TimeoutMs: 800
+```
+
+实现：`transporthttp.RankHTTPClient` → `upstream.HTTPDoer`  
+- 轮询/随机选实例  
+- 连接池复用（`MaxIdleConnsPerHost`）  
+- **失败自动换下一个实例**（5xx / 网络错误）
+
+与 go-zero 的关系：rank 侧已是 `go-zero/rest` Server；recommend 调 rank 走 **HTTP 客户端多目标**，无需把 rank 改成 zrpc 即可多实例。若全链路改为 **gRPC + etcd 服务发现**，可再包一层 `zrpc` Client（见下节演进）。
+
+### 11.3 Rank → TF-Serving 多地址
+
+`rank-api.yaml` 的 `TFServing` / `RankModelBundles.*.TFServing`：
+
+```yaml
+TFServing:
+  Endpoints:
+    - http://tf-serving-0:8501
+    - http://tf-serving-1:8501
+  LoadBalance: round_robin
+  ModelName: your_model
+  SignatureName: serving_default
+  InputTensor: inputs
+  FeatureDim: 8
+  TimeoutMs: 1500
+  OutputName: predictions
+```
+
+### 11.4 REST vs gRPC（对照 C++）
+
+| 维度 | C++ `TFModelGrpc` | 本仓库默认 REST |
+|------|-------------------|-----------------|
+| 协议 | gRPC `:8500` | HTTP JSON `:8501` |
+| 性能 | 大批量 tensor 更省 | 单条/小 batch 足够；Go 实现简单 |
+| 运维 | 需 proto + grpc 依赖 | 与官方 TF Serving Docker REST 一致 |
+| 多实例 | 客户端 LB | `Endpoints` + round_robin（已实现） |
+
+**建议**：开源版与实验环境 **先用 REST**；QPS 极高且 batch 固定时再增加 `Protocol: grpc` 实现（与 REST 共用 `Endpoints` 列表，端口改为 8500）。
+
+### 11.5 生产演进（可选）
+
+| 阶段 | 方案 |
+|------|------|
+| 现在 | 配置 `Endpoints` + `pkg/upstream` 轮询与 failover |
+| 中期 | K8s Service 单 DNS + readiness；或 Nginx/Envoy 做 L7 LB |
+| 后期 | go-zero **zrpc** + etcd 注册 rank；rank 调 TF 用 gRPC + 批量 Predict |
+
+---
+
+## 12. 设计原则（开源版）
 
 1. **Center / Rank 分离**：候选扩量与策略在 recommend；算力密集打分在 rank。  
 2. **配置驱动**：策略列表用 JSON 描述，按 `exp_id` + `UserGroup` 选桶。  

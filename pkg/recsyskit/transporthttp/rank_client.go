@@ -1,42 +1,40 @@
 package transporthttp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
 	"recsys_go/pkg/recsyskit"
+	"recsys_go/pkg/upstream"
 )
 
-// RankHTTPClient implements recsyskit.RankClient over JSON HTTP.
+// RankHTTPClient implements recsyskit.RankClient over JSON HTTP with multi-endpoint LB.
 type RankHTTPClient struct {
-	BaseURL    string
-	HTTPClient *http.Client
-	Path       string
+	doer *upstream.HTTPDoer
+	Path string
 }
 
-// NewRankHTTPClient returns a client posting to baseURL + path (default "/v1/rank/multi").
-func NewRankHTTPClient(baseURL string, timeout time.Duration) *RankHTTPClient {
-	if timeout <= 0 {
-		timeout = 800 * time.Millisecond
+// NewRankHTTPClientSingle is a shortcut for a single rank-api instance (tests / dev).
+func NewRankHTTPClientSingle(baseURL string, timeout time.Duration) (*RankHTTPClient, error) {
+	return NewRankHTTPClient(upstream.EndpointsConfig{BaseURL: baseURL}, timeout)
+}
+
+// NewRankHTTPClient returns a client for one or many rank-api base URLs.
+// Prefer Endpoints for multi-instance; BaseURL alone remains valid for single instance / K8s Service.
+func NewRankHTTPClient(eps upstream.EndpointsConfig, timeout time.Duration) (*RankHTTPClient, error) {
+	doer, err := upstream.NewHTTPDoer(eps, timeout)
+	if err != nil {
+		return nil, err
 	}
-	return &RankHTTPClient{
-		BaseURL: baseURL,
-		HTTPClient: &http.Client{
-			Timeout: timeout,
-		},
-		Path: "/v1/rank/multi",
-	}
+	return &RankHTTPClient{doer: doer, Path: "/v1/rank/multi"}, nil
 }
 
 // MultiRank implements recsyskit.RankClient.
 func (c *RankHTTPClient) MultiRank(ctx context.Context, req *recsyskit.MultiRankRequest) (*recsyskit.MultiRankResponse, error) {
-	if c == nil || c.BaseURL == "" {
-		return nil, fmt.Errorf("rank http client: empty base url")
+	if c == nil || c.doer == nil {
+		return nil, fmt.Errorf("rank http client: not configured")
 	}
 	body := MultiRankRequestJSON{
 		UUID:            req.Ctx.UUID,
@@ -66,23 +64,9 @@ func (c *RankHTTPClient) MultiRank(ctx context.Context, req *recsyskit.MultiRank
 	if err != nil {
 		return nil, err
 	}
-	url := c.BaseURL + c.Path
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	b, err := c.doer.PostBytes(ctx, c.Path, raw, "application/json")
 	if err != nil {
-		return nil, err
-	}
-	hreq.Header.Set("Content-Type", "application/json")
-	resp, err := c.HTTPClient.Do(hreq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("rank http: status %d body %s", resp.StatusCode, string(b))
+		return nil, fmt.Errorf("rank http: %w", err)
 	}
 	var wire MultiRankResponseJSON
 	if err := json.Unmarshal(b, &wire); err != nil {

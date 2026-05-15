@@ -27,8 +27,12 @@ func NewServiceContext(c config.Config, configFilePath string) (*ServiceContext,
 		timeout = 800 * time.Millisecond
 	}
 	var rank recsyskit.RankClient
-	if c.RankService.BaseURL != "" {
-		rank = transporthttp.NewRankHTTPClient(c.RankService.BaseURL, timeout)
+	if len(c.RankEndpoints().Resolve()) > 0 {
+		rc, err := transporthttp.NewRankHTTPClient(c.RankEndpoints(), timeout)
+		if err != nil {
+			return nil, err
+		}
+		rank = rc
 	}
 	fetch, err := featurestore.NewFetcher(c.FeatureRedis)
 	if err != nil {

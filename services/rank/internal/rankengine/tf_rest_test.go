@@ -19,14 +19,17 @@ func TestTFPredictor_MockServer(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	p := NewTFPredictor(config.TFConfig{
+	p, err := NewTFPredictor(config.TFConfig{
 		BaseURL:       ts.URL,
 		ModelName:     "m1",
-		SignatureName: "serving_default",
-		InputTensor:   "x",
-		FeatureDim:    4,
-		TimeoutMs:     1000,
+		SignatureName:   "serving_default",
+		InputTensor:     "x",
+		FeatureDim:      4,
+		TimeoutMs:       1000,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	v, err := p.Predict(context.Background(), []float64{0.1, 0.2, 0.3, 0.4})
 	if err != nil {
 		t.Fatal(err)

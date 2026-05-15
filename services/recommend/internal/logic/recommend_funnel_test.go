@@ -55,7 +55,10 @@ func TestFunnelFiltersHighExposureItem(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	client := transporthttp.NewRankHTTPClient(ts.URL, time.Second)
+	client, err := transporthttp.NewRankHTTPClientSingle(ts.URL, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec := NewRecommendFunnel(client, featurestore.NoOp, lib, recall.NewRegistry())
 	resp, err := rec.Handle(context.Background(), &transporthttp.RecommendRequestJSON{
 		UUID:     "t",

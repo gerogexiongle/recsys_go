@@ -1,6 +1,10 @@
 package config
 
-import "github.com/zeromicro/go-zero/rest"
+import (
+	"github.com/zeromicro/go-zero/rest"
+
+	"recsys_go/pkg/upstream"
+)
 
 // FMConfig loads the same text format as legacy TDPredict FMModelData (see online_map_rank FMModelData.h).
 type FMConfig struct {
@@ -9,10 +13,12 @@ type FMConfig struct {
 	TransPath string `json:"TransPath,optional"`
 }
 
-// TFConfig calls TensorFlow Serving HTTP predict API (docker 8501 REST).
+// TFConfig calls TensorFlow Serving predict API (REST :8501 default; gRPC :8500 optional future).
 type TFConfig struct {
-	BaseURL       string `json:"BaseURL,optional"`
-	ModelName     string `json:"ModelName,optional"`
+	BaseURL       string   `json:"BaseURL,optional"`
+	Endpoints     []string `json:"Endpoints,optional"`
+	LoadBalance   string   `json:"LoadBalance,optional"`
+	ModelName     string   `json:"ModelName,optional"`
 	SignatureName string `json:"SignatureName,optional"`
 	InputTensor   string `json:"InputTensor,optional"`
 	FeatureDim    int    `json:"FeatureDim,optional"`
@@ -31,6 +37,15 @@ type RankEngineConfig struct {
 
 	PreRankTrunc int `json:"PreRankTrunc,optional"` // 0 = no extra truncation beyond ret_count
 	RankTrunc    int `json:"RankTrunc,optional"`    // align with C++ TruncCount before TF, 0 = disabled
+}
+
+// TFEndpoints builds upstream config from yaml fields.
+func (c TFConfig) TFEndpoints() upstream.EndpointsConfig {
+	return upstream.EndpointsConfig{
+		BaseURL:     c.BaseURL,
+		Endpoints:   c.Endpoints,
+		LoadBalance: c.LoadBalance,
+	}
 }
 
 // FeatureRedis configures JSON STRING keys for user/item features (open-source default: CN test Redis host).
