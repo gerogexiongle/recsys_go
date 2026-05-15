@@ -1,0 +1,30 @@
+Name: recommend-api
+Host: 0.0.0.0
+Port: 18080
+Timeout: 5000
+Log:
+  Mode: console
+
+FunnelConfigPath: ""
+CenterRecallPath: "recommend-recall.json"
+CenterFilterPath: "recommend-filter.json"
+CenterShowControlPath: "recommend-showcontrol.json"
+
+FeatureRedis:
+  Disabled: false
+  Host: 172.31.0.80
+  Port: 6379
+  DB: 0
+  Crypto: true
+  PasswordHex: "d1c98bea6a9824201ac9375488748b3c07"
+  UserKeyPattern: "recsysgo:user:%d"
+  ItemKeyPattern: "recsysgo:item:%d"
+
+# Lab: one rank process, three identical Endpoints to exercise client round_robin.
+RankService:
+  Endpoints:
+    - http://127.0.0.1:18081
+    - http://127.0.0.1:18081
+    - http://127.0.0.1:18081
+  LoadBalance: round_robin
+  TimeoutMs: 800

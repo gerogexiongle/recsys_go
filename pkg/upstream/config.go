@@ -11,27 +11,28 @@ type EndpointsConfig struct {
 }
 
 // Resolve returns normalized base URLs without trailing slash.
+// When Endpoints is set, order and duplicates are preserved (same host repeated = RR weight / lab test).
+// BaseURL is used only when Endpoints is empty (single instance or legacy yaml).
 func (c EndpointsConfig) Resolve() []string {
-	var raw []string
 	if len(c.Endpoints) > 0 {
-		raw = append(raw, c.Endpoints...)
+		var out []string
+		for _, u := range c.Endpoints {
+			u = strings.TrimSpace(u)
+			u = strings.TrimRight(u, "/")
+			if u != "" {
+				out = append(out, u)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
 	}
 	if c.BaseURL != "" {
-		raw = append(raw, c.BaseURL)
-	}
-	seen := make(map[string]struct{}, len(raw))
-	var out []string
-	for _, u := range raw {
-		u = strings.TrimSpace(u)
+		u := strings.TrimSpace(c.BaseURL)
 		u = strings.TrimRight(u, "/")
-		if u == "" {
-			continue
+		if u != "" {
+			return []string{u}
 		}
-		if _, ok := seen[u]; ok {
-			continue
-		}
-		seen[u] = struct{}{}
-		out = append(out, u)
 	}
-	return out
+	return nil
 }
