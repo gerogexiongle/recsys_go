@@ -15,20 +15,22 @@ func TestParseExposureJSON_flat(t *testing.T) {
 	}
 }
 
-func TestParseFeatureLessFlag_missingKey(t *testing.T) {
-	if ParseFeatureLessFlag(nil, true) {
-		t.Fatal("missing key must not mark feature-less")
+func TestParseFeatureLessSet_list(t *testing.T) {
+	s := ParseFeatureLessSet([]byte(`[910009,910008]`), false)
+	if _, ok := s[910009]; !ok {
+		t.Fatalf("%+v", s)
 	}
 }
 
-func TestParseFeatureLessFlag_present(t *testing.T) {
-	if !ParseFeatureLessFlag([]byte("1"), false) {
-		t.Fatal("expected feature-less")
+func TestParseFeatureLessSet_missing(t *testing.T) {
+	if ParseFeatureLessSet(nil, true) != nil {
+		t.Fatal("missing key => nil set")
 	}
 }
 
-func TestParseItemLabel_missingKey(t *testing.T) {
-	if ParseItemLabel(nil, true) != "" {
-		t.Fatal("missing label key => empty")
+func TestParseRecallList(t *testing.T) {
+	ids := ParseRecallList([]byte(`[910001,910010]`))
+	if len(ids) != 2 || ids[0] != 910001 {
+		t.Fatalf("%v", ids)
 	}
 }

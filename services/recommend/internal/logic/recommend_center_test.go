@@ -65,7 +65,7 @@ func TestCenterLiveExposureFilters910005(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := NewRecommendCenter(client, featurestore.NoOp, center, recall.NewRegistry())
+	rec := NewRecommendCenter(client, featurestore.NoOp, center, recall.NewRegistry(nil))
 	resp, err := rec.Handle(context.Background(), &transporthttp.RecommendRequestJSON{
 		UUID:     "t",
 		UserID:   1,

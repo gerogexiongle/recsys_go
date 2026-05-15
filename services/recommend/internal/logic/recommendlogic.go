@@ -218,7 +218,7 @@ func (l *Recommend) rankAndShowCenter(ctx context.Context, req *transporthttp.Re
 func (l *Recommend) enrichFromRedis(ctx context.Context, rctx recsyskit.RequestContext, items []recsyskit.ItemInfo) ([]recsyskit.ItemInfo, recsyskit.RequestContext) {
 	if l.Features == nil || l.Features == featurestore.NoOp {
 		if rctx.Exposure == nil {
-			rctx.Exposure = demoExposure(rctx.UserID)
+			rctx.Exposure = demoItemExposure()
 		}
 		return items, rctx
 	}
@@ -303,10 +303,7 @@ func buildRecommendResponse(req *transporthttp.RecommendRequestJSON, items []rec
 	return out
 }
 
-// demoExposure simulates high exposure on 910005 for exposure_backoff / LiveExposure tests (replace with Redis in prod).
-func demoExposure(userID int64) map[recsyskit.ItemID]int {
-	if userID == 0 {
-		return nil
-	}
+// demoItemExposure item-level fallback when Redis disabled (recsysgo:filter:exposure).
+func demoItemExposure() map[recsyskit.ItemID]int {
 	return map[recsyskit.ItemID]int{910005: 15}
 }

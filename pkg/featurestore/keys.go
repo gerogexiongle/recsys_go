@@ -2,36 +2,37 @@ package featurestore
 
 import "fmt"
 
-// Key layout mirrors C++ online_map_center: profile HASH fields vs side-channel proto types.
-//
-// Profile (FM / rank only) — missing key => no user/item portrait; rank uses placeholder sparse.
+// Profile (FM / rank / show when derivable) — one STRING JSON per entity.
 const (
 	DefaultUserFeatKeyPattern = "recsysgo:feat:user:%d"
 	DefaultItemFeatKeyPattern = "recsysgo:feat:item:%d"
 )
 
-// Filter strategy keys — each FilterType reads its own namespace (adjust data without touching feat JSON).
-// Missing key semantics (align C++ GetProtoDataEmpty):
-//   - exposure user key missing => empty exposure map => LiveExposure does not filter
-//   - featureless item key missing => item treated as having features => FeatureLess keeps item
-//   - label item key missing => LabelTypeWhiteList cannot match label
+// Filter — one merged key per strategy namespace (item-level only in OSS demo).
+// Missing key => strategy inactive (C++ GetProtoDataEmpty).
 const (
-	DefaultUserExposureKeyPattern     = "recsysgo:filter:exposure:user:%d"
-	DefaultItemFeatureLessKeyPattern  = "recsysgo:filter:featureless:item:%d"
-	DefaultItemLabelKeyPattern        = "recsysgo:filter:label:item:%d"
+	KeyFilterExposure    = "recsysgo:filter:exposure"    // JSON map item_id -> count
+	KeyFilterFeatureLess = "recsysgo:filter:featureless" // JSON array of item ids
+	KeyFilterLabel       = "recsysgo:filter:label"       // JSON map item_id -> label
 )
 
-// KeyPatterns builds Redis STRING keys for profile JSON.
+// Recall — non-personalized lane = single list; CF = per-user list (C++ invert ZSET vs user CF).
+const (
+	KeyRecallLanePrefix   = "recsysgo:recall:lane:"       // + RecallType e.g. LiveRedirect
+	DefaultRecallCFUserKey = "recsysgo:recall:cf:user:%d" // JSON [item_ids...]
+)
+
 type KeyPatterns struct {
 	UserFeat string
 	ItemFeat string
 }
 
-// StrategyKeyPatterns builds Redis STRING keys for non-profile strategies.
 type StrategyKeyPatterns struct {
-	UserExposure    string
-	ItemFeatureLess string
-	ItemLabel       string
+	FilterExposure    string
+	FilterFeatureLess string
+	FilterLabel       string
+	RecallLanePrefix  string
+	RecallCFUser      string
 }
 
 func DefaultKeyPatterns() KeyPatterns {
@@ -40,28 +41,25 @@ func DefaultKeyPatterns() KeyPatterns {
 
 func DefaultStrategyKeyPatterns() StrategyKeyPatterns {
 	return StrategyKeyPatterns{
-		UserExposure:    DefaultUserExposureKeyPattern,
-		ItemFeatureLess: DefaultItemFeatureLessKeyPattern,
-		ItemLabel:       DefaultItemLabelKeyPattern,
+		FilterExposure:    KeyFilterExposure,
+		FilterFeatureLess: KeyFilterFeatureLess,
+		FilterLabel:       KeyFilterLabel,
+		RecallLanePrefix:  KeyRecallLanePrefix,
+		RecallCFUser:      DefaultRecallCFUserKey,
 	}
 }
 
-func (p KeyPatterns) UserKey(uin int64) string  { return fmt.Sprintf(p.UserFeat, uin) }
+func (p KeyPatterns) UserKey(uin int64) string   { return fmt.Sprintf(p.UserFeat, uin) }
 func (p KeyPatterns) ItemKey(itemID int64) string { return fmt.Sprintf(p.ItemFeat, itemID) }
 
-func (p StrategyKeyPatterns) UserExposureKey(uin int64) string {
-	return fmt.Sprintf(p.UserExposure, uin)
+func (p StrategyKeyPatterns) RecallLaneKey(lane string) string {
+	return p.RecallLanePrefix + lane
 }
 
-func (p StrategyKeyPatterns) ItemFeatureLessKey(itemID int64) string {
-	return fmt.Sprintf(p.ItemFeatureLess, itemID)
+func (p StrategyKeyPatterns) RecallCFUserKey(uin int64) string {
+	return fmt.Sprintf(p.RecallCFUser, uin)
 }
 
-func (p StrategyKeyPatterns) ItemLabelKey(itemID int64) string {
-	return fmt.Sprintf(p.ItemLabel, itemID)
-}
-
-// FutureKeyKinds documents C++-style keys for later adapters (invert / material).
 type FutureKeyKinds struct {
 	InvertTagRecall  string
 	MaterialSuppress string

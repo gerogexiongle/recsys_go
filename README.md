@@ -198,13 +198,15 @@ flowchart TD
 
 | 用途 | Key 模式 | 值格式 | key 不存在时 |
 |------|----------|--------|--------------|
-| 用户画像（FM） | `recsysgo:feat:user:%d` | JSON：`age`, `gender`, `income_wan`, … | rank 无用户画像槽位 |
-| 物品画像（FM） | `recsysgo:feat:item:%d` | JSON：`ctr_7d`, `revenue_7d`, `fm_sparse`, … | rank 无物品画像槽位 |
-| LiveExposure | `recsysgo:filter:exposure:user:%d` | JSON：`{"910005":15}` | 无曝光数据，不按曝光过滤 |
-| FeatureLess | `recsysgo:filter:featureless:item:%d` | `"1"` | **视为有特征**，不过滤 |
-| Label 白名单 | `recsysgo:filter:label:item:%d` | 纯文本 label | 无法按 label 命中 |
+| 用户画像（FM/展控） | `recsysgo:feat:user:%d` | JSON 画像 | 无用户画像槽位 |
+| 物品画像（FM/展控） | `recsysgo:feat:item:%d` | JSON 画像 | 无物品画像槽位 |
+| LiveExposure（物品维） | `recsysgo:filter:exposure` | JSON map `item_id→count` | 不按曝光过滤 |
+| FeatureLess | `recsysgo:filter:featureless` | JSON 数组 `[910009,…]` | 无 feature-less 物品 |
+| Label 白名单 | `recsysgo:filter:label` | JSON map `item_id→label` | 无法按 label 命中 |
+| 非个性化召回 | `recsysgo:recall:lane:{RecallType}` | JSON 物品 id 列表 | 回退代码 stub |
+| 协同过滤（个性化） | `recsysgo:recall:cf:user:%d` | JSON 物品 id 列表 | 回退 stub |
 
-过滤/召回/展控等非画像数据 **不与 feat key 混写**（对齐 C++ `game_exposure` 等独立 proto field）。生产常见 **HASH 分桶**；本仓库用 **STRING** 降低演示复杂度。见 `pkg/featurestore/strategy.go` 与各 `FilterType` 读取逻辑。
+**仅画像与 CF 按实体分 key**；过滤为单 key 合并 JSON；展控用画像即可。见 `pkg/featurestore/keys.go`。
 
 密码：`FeatureRedis.Crypto=true` 时使用与线上一致的 AES 密文（`pkg/redisdecrypt`），明文密码通过 `EncryptPassword` 生成 hex 写入配置。
 

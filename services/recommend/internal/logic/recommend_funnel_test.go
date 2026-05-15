@@ -59,7 +59,7 @@ func TestFunnelFiltersHighExposureItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := NewRecommendFunnel(client, featurestore.NoOp, lib, recall.NewRegistry())
+	rec := NewRecommendFunnel(client, featurestore.NoOp, lib, recall.NewRegistry(nil))
 	resp, err := rec.Handle(context.Background(), &transporthttp.RecommendRequestJSON{
 		UUID:     "t",
 		UserID:   1,

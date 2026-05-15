@@ -7,7 +7,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RedisJSONConfig configures STRING keys for profile + strategy namespaces.
 type RedisJSONConfig struct {
 	Addr     string
 	Password string
@@ -16,7 +15,6 @@ type RedisJSONConfig struct {
 	Strategy StrategyKeyPatterns
 }
 
-// RedisJSONFetcher reads profile and strategy keys via GET / MGET.
 type RedisJSONFetcher struct {
 	rdb *redis.Client
 	kp  KeyPatterns
@@ -32,7 +30,7 @@ func NewRedisJSONFetcher(cfg RedisJSONConfig) (*RedisJSONFetcher, error) {
 		kp = DefaultKeyPatterns()
 	}
 	sk := cfg.Strategy
-	if sk.UserExposure == "" {
+	if sk.FilterExposure == "" {
 		sk = DefaultStrategyKeyPatterns()
 	}
 	rdb := redis.NewClient(&redis.Options{
@@ -54,27 +52,28 @@ func (r *RedisJSONFetcher) ItemJSON(ctx context.Context, itemID int64) ([]byte, 
 	return r.get(ctx, r.kp.ItemKey(itemID))
 }
 
-func (r *RedisJSONFetcher) UserExposureJSON(ctx context.Context, uin int64) ([]byte, bool, error) {
-	b, err := r.rdb.Get(ctx, r.sk.UserExposureKey(uin)).Bytes()
-	if err == redis.Nil {
-		return nil, true, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	return b, false, nil
-}
-
 func (r *RedisJSONFetcher) ItemsJSON(ctx context.Context, itemIDs []int64) (map[int64][]byte, error) {
 	return r.mgetByItemIDs(ctx, itemIDs, r.kp.ItemKey)
 }
 
-func (r *RedisJSONFetcher) ItemsFeatureLessJSON(ctx context.Context, itemIDs []int64) (map[int64][]byte, error) {
-	return r.mgetByItemIDs(ctx, itemIDs, r.sk.ItemFeatureLessKey)
+func (r *RedisJSONFetcher) FilterExposureJSON(ctx context.Context) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.FilterExposure)
 }
 
-func (r *RedisJSONFetcher) ItemsLabelJSON(ctx context.Context, itemIDs []int64) (map[int64][]byte, error) {
-	return r.mgetByItemIDs(ctx, itemIDs, r.sk.ItemLabelKey)
+func (r *RedisJSONFetcher) FilterFeatureLessJSON(ctx context.Context) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.FilterFeatureLess)
+}
+
+func (r *RedisJSONFetcher) FilterLabelJSON(ctx context.Context) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.FilterLabel)
+}
+
+func (r *RedisJSONFetcher) RecallLaneJSON(ctx context.Context, lane string) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.RecallLaneKey(lane))
+}
+
+func (r *RedisJSONFetcher) RecallCFUserJSON(ctx context.Context, uin int64) ([]byte, bool, error) {
+	return r.getMissing(ctx, r.sk.RecallCFUserKey(uin))
 }
 
 func (r *RedisJSONFetcher) mgetByItemIDs(ctx context.Context, itemIDs []int64, keyFn func(int64) string) (map[int64][]byte, error) {
@@ -105,9 +104,17 @@ func (r *RedisJSONFetcher) mgetByItemIDs(ctx context.Context, itemIDs []int64, k
 }
 
 func (r *RedisJSONFetcher) get(ctx context.Context, key string) ([]byte, error) {
+	b, _, err := r.getMissing(ctx, key)
+	return b, err
+}
+
+func (r *RedisJSONFetcher) getMissing(ctx context.Context, key string) ([]byte, bool, error) {
 	s, err := r.rdb.Get(ctx, key).Bytes()
 	if err == redis.Nil {
-		return nil, nil
+		return nil, true, nil
 	}
-	return s, err
+	if err != nil {
+		return nil, false, err
+	}
+	return s, false, nil
 }

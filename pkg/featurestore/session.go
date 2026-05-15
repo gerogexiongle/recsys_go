@@ -6,20 +6,18 @@ import (
 	"recsys_go/pkg/recsyskit"
 )
 
-// Session holds per-request profile JSON (FM / rank).
 type Session struct {
 	UserID int64
 	User   []byte
 	Items  map[int64][]byte
 }
 
-// CenterSession adds filter-strategy payloads loaded from separate Redis keys.
+// CenterSession: profile per entity + merged filter blobs (item-level).
 type CenterSession struct {
-	Profile  *Session
-	Exposure map[recsyskit.ItemID]int
-	// per-item strategy: key missing in maps => strategy data absent
-	FeatureLess map[int64][]byte // raw only when key existed
-	Label       map[int64][]byte
+	Profile       *Session
+	Exposure      map[recsyskit.ItemID]int // from recsysgo:filter:exposure
+	FeatureLess   map[int64]struct{}     // from recsysgo:filter:featureless
+	LabelByItem   map[int64]string       // from recsysgo:filter:label
 }
 
 func LoadSession(ctx context.Context, fetch Fetcher, userID int64, itemIDs []int64) (*Session, error) {
@@ -51,7 +49,6 @@ func LoadSession(ctx context.Context, fetch Fetcher, userID int64, itemIDs []int
 	return s, nil
 }
 
-// LoadCenterSession loads profile + filter strategy keys (C++ InitUserFeature + game_exposure + map filter flags).
 func LoadCenterSession(ctx context.Context, fetch Fetcher, userID int64, itemIDs []int64) (*CenterSession, error) {
 	prof, err := LoadSession(ctx, fetch, userID, itemIDs)
 	if err != nil {
@@ -62,26 +59,26 @@ func LoadCenterSession(ctx context.Context, fetch Fetcher, userID int64, itemIDs
 	if !ok || st == nil {
 		return cs, nil
 	}
-	expRaw, expMissing, err := st.UserExposureJSON(ctx, userID)
+	expRaw, expMiss, err := st.FilterExposureJSON(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if m := ParseExposureJSON(expRaw, expMissing); len(m) > 0 {
+	if m := ParseExposureJSON(expRaw, expMiss); len(m) > 0 {
 		cs.Exposure = make(map[recsyskit.ItemID]int, len(m))
 		for id, c := range m {
 			cs.Exposure[recsyskit.ItemID(id)] = c
 		}
 	}
-	if len(itemIDs) > 0 {
-		cs.FeatureLess, err = st.ItemsFeatureLessJSON(ctx, itemIDs)
-		if err != nil {
-			return nil, err
-		}
-		cs.Label, err = st.ItemsLabelJSON(ctx, itemIDs)
-		if err != nil {
-			return nil, err
-		}
+	flRaw, flMiss, err := st.FilterFeatureLessJSON(ctx)
+	if err != nil {
+		return nil, err
 	}
+	cs.FeatureLess = ParseFeatureLessSet(flRaw, flMiss)
+	lbRaw, lbMiss, err := st.FilterLabelJSON(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cs.LabelByItem = ParseLabelMap(lbRaw, lbMiss)
 	return cs, nil
 }
 
@@ -90,19 +87,21 @@ func (cs *CenterSession) EnrichItems(items []recsyskit.ItemInfo) []recsyskit.Ite
 	for i, it := range items {
 		out[i] = it
 		id := int64(it.ID)
-		flRaw, flHad := cs.FeatureLess[id]
-		if ParseFeatureLessFlag(flRaw, !flHad) {
-			if out[i].Extra == nil {
-				out[i].Extra = make(map[string]string)
+		if cs.FeatureLess != nil {
+			if _, drop := cs.FeatureLess[id]; drop {
+				if out[i].Extra == nil {
+					out[i].Extra = make(map[string]string)
+				}
+				out[i].Extra["feature_less"] = "1"
 			}
-			out[i].Extra["feature_less"] = "1"
 		}
-		lbRaw, lbHad := cs.Label[id]
-		if lb := ParseItemLabel(lbRaw, !lbHad); lb != "" {
-			if out[i].Extra == nil {
-				out[i].Extra = make(map[string]string)
+		if cs.LabelByItem != nil {
+			if lb := cs.LabelByItem[id]; lb != "" {
+				if out[i].Extra == nil {
+					out[i].Extra = make(map[string]string)
+				}
+				out[i].Extra["label"] = lb
 			}
-			out[i].Extra["label"] = lb
 		}
 	}
 	return out

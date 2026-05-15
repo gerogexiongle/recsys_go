@@ -91,7 +91,11 @@ func NewServiceContext(c config.Config, configFilePath string) (*ServiceContext,
 	}
 	var rec *recall.Registry
 	if funnel != nil || center != nil {
-		rec = recall.NewRegistry()
+		var rf featurestore.RecallFetcher
+		if rff, ok := fetch.(featurestore.RecallFetcher); ok {
+			rf = rff
+		}
+		rec = recall.NewRegistry(rf)
 	}
 	return &ServiceContext{Config: c, Rank: rank, Features: fetch, Funnel: funnel, Center: center, Recall: rec}, nil
 }
