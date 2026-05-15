@@ -1,7 +1,7 @@
 # recsys_go
 
 面向**通用推荐链路**的 Go 参考实现：多路召回 → 合并去重 → 规则/特征过滤 → 粗排（FM）→ 精排（TF-Serving 可选）→ 展控 → 返回结果。  
-不绑定具体业务域（地图/直播等），配置形态对齐常见 **Center + Rank** 双服务拆分，便于对照自有 C++ 推荐中台做迁移或实验。
+不绑定具体业务域（地图/直播等），配置形态对齐常见 **Center + Rank** 双服务拆分，便于对照自有业务推荐中台做迁移或实验。
 
 仓库地址：[https://github.com/gerogexiongle/recsys_go](https://github.com/gerogexiongle/recsys_go)
 
