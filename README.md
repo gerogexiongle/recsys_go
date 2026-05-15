@@ -25,6 +25,7 @@ flowchart TB
     FEAT_C["featurestore.Session<br/>Redis user/item JSON"]
     FILTER[Rule + Feature Filter]
     SHOW[ShowControl 策略链]
+    KAFKA[KafkaPush<br/>算法审计日志]
     API --> CFG_R --> RECALL --> MERGE
     MERGE --> FEAT_C --> FILTER --> SHOW
     CFG_F --> FILTER
@@ -52,9 +53,11 @@ flowchart TB
   FEAT_C --> UK
   FEAT_C --> IK
   SHOW -->|HTTP MultiRank| RAPI
+  SHOW --> KAFKA
   FEAT_R --> UK
   FEAT_R --> IK
   SHOW --> APP
+  KAFKA --> Kafka[(Kafka topic)]
 ```
 
 | 服务 | 端口 | 职责 |
@@ -214,6 +217,42 @@ flowchart TD
 
 密码：`FeatureRedis.Crypto=true` 时使用与线上一致的 AES 密文（`pkg/redisdecrypt`），明文密码通过 `EncryptPassword` 生成 hex 写入配置。
 
+### 6.1 Kafka 算法审计日志（可选）
+
+推荐成功返回后，异步写入 **管道分隔** 审计串（字段布局与常见 Center 线上一致，便于日志平台统一解析）。开源默认使用中性类型标识，**避免在公开仓库暴露具体业务域**：
+
+| 配置项 | OSS 默认值 | 含义 |
+|--------|------------|------|
+| `KafkaPush.DataType` | `cn_ol_item` | 数据类型（可按环境覆盖） |
+| `KafkaPush.APIType` | `10001` | API 类型编号（可按环境覆盖） |
+| `KafkaPush.Topic` | `test` | 本地 topic；生产由运维配置 |
+
+**消息体**：28 段 `|`，关键字段为 `server_name`、`timestamp`、`api_type`、`data_type`、`request_id`、`uin`、`exp_list`、`material_list`。  
+`material_list` 形如：`[item_id:RecallType:rank_score:show_score:task_id:pre_score:re_score,...]`（最多 18 条）。
+
+```yaml
+# services/recommend/etc/recommend-api.yaml
+KafkaPush:
+  Enabled: false
+  Brokers: ["127.0.0.1:9092"]
+  Topic: test
+  DataType: cn_ol_item
+  APIType: 10001
+```
+
+本地 Kafka：`scripts/install_kafka.sh`。
+
+**一份配置**：仅维护 `services/recommend/etc/recommend-api.yaml`。E2E 通过环境变量开关能力（`services/recommend/internal/config/env.go`），无需 `recommend-api-e2e-*.yaml`：
+
+| 环境变量 | 作用 |
+|----------|------|
+| `RECSYS_KAFKA_PUSH=1` | 开启 Kafka 审计推送 |
+| `RECSYS_KAFKA_BROKERS` / `RECSYS_KAFKA_TOPIC` | 覆盖 broker / topic |
+| `RECSYS_RANK_ENDPOINTS` | 逗号分隔多 rank 地址（LB 实验） |
+| `RECSYS_REDIS_HOST` 等 | 覆盖 Redis 连接（与 seed 脚本一致） |
+
+`make e2e-full` 依次跑 **center + kafka + lb** 三阶段；`make e2e-kafka` / `make e2e-lb` 只跑单阶段（`RECSYS_E2E_PHASES`）。
+
 ---
 
 ## 7. 目录结构
@@ -224,6 +263,8 @@ recsys_go/
 ├── pkg/
 │   ├── recsyskit/          # 流水线抽象、漏斗配置、合并/过滤工具
 │   ├── featurestore/       # Redis 特征、Session、FM JSON 合并
+│   ├── algolog/            # Kafka 算法审计日志组包（管道格式）
+│   ├── kafkapush/          # 异步 Kafka 推送
 │   ├── featurekit/         # 稀疏特征类型
 │   └── redisdecrypt/       # Redis 密码加解密
 ├── services/
@@ -231,6 +272,7 @@ recsys_go/
 │   │   ├── etc/            # yaml + recall/filter/show JSON
 │   │   └── internal/
 │   │       ├── centerconfig/
+│   │       ├── pipeline/   # center 编排
 │   │       ├── recall/     # 召回插件注册表
 │   │       └── logic/
 │   └── rank/               # Rank 侧：FM + TF + RankExpConf
@@ -238,8 +280,11 @@ recsys_go/
 │       └── internal/rankengine/
 └── scripts/
     ├── seed_feature_redis.py
+    ├── install_kafka.sh
     ├── e2e.sh
-    └── e2e_full_chain.sh
+    ├── e2e_full_chain.sh
+    ├── e2e_common.sh
+    └── e2e_kafka_full_chain.sh
 ```
 
 ---
@@ -250,6 +295,7 @@ recsys_go/
 
 - Go 1.22+
 - Redis（可选；关闭时 `FeatureRedis.Disabled: true`）
+- Kafka（可选；算法审计日志，`KafkaPush.Enabled: true`）
 - Python 3 + `redis` + `pycryptodome`（仅种子脚本）
 
 ### 构建
@@ -296,8 +342,10 @@ curl -s -X POST http://127.0.0.1:18080/v1/recommend \
 ### 一键自测
 
 ```bash
-make e2e          # 轻量 stub 召回 + mock rank
-make e2e-full     # Redis + FM pipeline + 三文件 center 全链路
+make e2e          # 轻量 stub（同一份 recommend-api.yaml）
+make e2e-full     # center + Kafka + rank LB（一份 yaml + env）
+make e2e-kafka    # 仅 Kafka 阶段
+make e2e-lb       # 仅 rank 多 Endpoint LB 阶段
 ```
 
 ---
@@ -321,7 +369,8 @@ make e2e-full     # Redis + FM pipeline + 三文件 center 全链路
 | 新过滤策略 | 在 `centerconfig/apply.go` 增加 `FilterType` 分支 |
 | 新展控策略 | 在 `centerconfig/apply.go` 增加 `ShowControlType` 分支 |
 | 新模型 / AB | `rank-api.yaml` 的 `RankModelBundles` + `rank-exp-conf.json` |
-| 倒排 / 物料 Redis | 实现新 `Fetcher` 接口，独立 key 命名空间，不与 `recsysgo:user/item` 混用 |
+| 倒排 / 物料 Redis | 实现新 `Fetcher` 接口，独立 key 命名空间，不与 `recsysgo:feat:user/item` 混用 |
+| Kafka 审计字段 | 修改 `recommend-api.yaml` 的 `KafkaPush.DataType` / `APIType`；勿在开源文档写生产域专用取值 |
 
 ---
 

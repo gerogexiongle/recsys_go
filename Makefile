@@ -1,7 +1,7 @@
 # Project root = directory containing this Makefile (works from any clone path).
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-.PHONY: tidy build recommend rank e2e e2e-full e2e-lb
+.PHONY: tidy build recommend rank e2e e2e-full e2e-kafka e2e-lb
 
 tidy:
 	cd $(PROJECT_ROOT) && go mod tidy
@@ -19,6 +19,9 @@ e2e:
 
 e2e-full:
 	bash $(PROJECT_ROOT)/scripts/e2e_full_chain.sh
+
+e2e-kafka:
+	bash $(PROJECT_ROOT)/scripts/e2e_kafka_full_chain.sh
 
 e2e-lb:
 	bash $(PROJECT_ROOT)/scripts/e2e_lb_dup_endpoints.sh

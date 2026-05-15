@@ -4,6 +4,7 @@ import (
 	"github.com/zeromicro/go-zero/rest"
 
 	"recsys_go/pkg/featurestore"
+	"recsys_go/pkg/kafkapush"
 	"recsys_go/pkg/upstream"
 )
 
@@ -34,4 +35,6 @@ type Config struct {
 	CenterShowControlPath   string `json:"CenterShowControlPath,optional"`
 	// FeatureRedis: same shape as rank FeatureRedis (user/item STRING JSON keys).
 	FeatureRedis featurestore.RedisConfig `json:"FeatureRedis,optional"`
+	// KafkaPush: algorithm log to Kafka (C++ MapCalc::PushKafaka / AlgorithmData).
+	KafkaPush kafkapush.Config `json:"KafkaPush,optional"`
 }

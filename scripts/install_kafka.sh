@@ -1,14 +1,24 @@
 #!/bin/bash
 set -euo pipefail
 
-# 与 /data/kafka/install_kafka.sh 保持一致，便于从项目目录部署到 algo-test-01
+# 与 /data/kafka/install_kafka.sh 保持一致，便于从项目目录部署到
+# ENABLE_KAFKA_UI=0 可跳过 Web UI
 
 KAFKA_VERSION="3.7.0"
+KAFKA_UI_IMAGE="${KAFKA_UI_IMAGE:-provectuslabs/kafka-ui:latest}"
+KAFKA_UI_PORT="${KAFKA_UI_PORT:-8080}"
+
 BASE_DIR="/data/kafka"
 DATA_DIR="${BASE_DIR}/data"
 CONF_DIR="${BASE_DIR}/conf"
 LOG_DIR="${BASE_DIR}/logs"
+
 CONTAINER_NAME="kafka"
+KAFKA_UI_NAME="${KAFKA_UI_NAME:-kafka-ui}"
+NETWORK_NAME="${NETWORK_NAME:-kafka-net}"
+ENABLE_KAFKA_UI="${ENABLE_KAFKA_UI:-1}"
+CLEAN_DATA="${CLEAN_DATA:-0}"
+
 HOST_IP=$(hostname -I | awk '{print $1}')
 
 echo "========== 创建目录 =========="
@@ -16,8 +26,8 @@ mkdir -p "${DATA_DIR}" "${CONF_DIR}" "${LOG_DIR}"
 chown -R 1000:1000 "${DATA_DIR}"
 chmod 755 "${DATA_DIR}"
 
-if [[ -n "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]]; then
-  echo "========== 清理旧数据 =========="
+if [[ "${CLEAN_DATA}" == "1" ]] && [[ -n "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]]; then
+  echo "========== 清理旧数据 (CLEAN_DATA=1) =========="
   rm -rf "${DATA_DIR:?}"/*
   chown -R 1000:1000 "${DATA_DIR}"
 fi
@@ -46,15 +56,23 @@ socket.receive.buffer.bytes=102400
 socket.request.max.bytes=104857600
 EOF
 
-echo "========== 拉取 Kafka 镜像 =========="
+echo "========== 创建 Docker 网络 =========="
+docker network create "${NETWORK_NAME}" 2>/dev/null || true
+
+echo "========== 拉取镜像 =========="
 docker pull "apache/kafka:${KAFKA_VERSION}"
+if [[ "${ENABLE_KAFKA_UI}" == "1" ]]; then
+  docker pull "${KAFKA_UI_IMAGE}"
+fi
 
 echo "========== 删除旧容器 =========="
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+docker rm -f "${KAFKA_UI_NAME}" >/dev/null 2>&1 || true
 
 echo "========== 启动 Kafka =========="
 docker run -d \
   --name "${CONTAINER_NAME}" \
+  --network "${NETWORK_NAME}" \
   --restart=always \
   -p 9092:9092 \
   -p 9093:9093 \
@@ -95,9 +113,21 @@ if [[ "${ready}" -ne 1 ]]; then
   exit 1
 fi
 
+if [[ "${ENABLE_KAFKA_UI}" == "1" ]]; then
+  echo "========== 启动 Kafka UI =========="
+  docker run -d \
+    --name "${KAFKA_UI_NAME}" \
+    --network "${NETWORK_NAME}" \
+    --restart=always \
+    -p "${KAFKA_UI_PORT}:8080" \
+    -e KAFKA_CLUSTERS_0_NAME=local \
+    -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS="${CONTAINER_NAME}:9092" \
+    "${KAFKA_UI_IMAGE}"
+fi
+
 echo ""
 echo "========== 容器状态 =========="
-docker ps --filter "name=${CONTAINER_NAME}"
+docker ps --filter "name=${CONTAINER_NAME}" --filter "name=${KAFKA_UI_NAME}"
 
 echo ""
 echo "========== 创建测试 Topic =========="
@@ -116,6 +146,10 @@ docker exec "${CONTAINER_NAME}" /opt/kafka/bin/kafka-topics.sh \
 echo ""
 echo "========== Kafka 信息 =========="
 echo "Bootstrap Server: ${HOST_IP}:9092"
+if [[ "${ENABLE_KAFKA_UI}" == "1" ]]; then
+  echo "Kafka UI:         http://${HOST_IP}:${KAFKA_UI_PORT}  (Topics -> test -> Messages)"
+fi
 echo ""
 echo "docker exec -it ${CONTAINER_NAME} /opt/kafka/bin/kafka-console-producer.sh --topic test --bootstrap-server localhost:9092"
 echo "docker exec -it ${CONTAINER_NAME} /opt/kafka/bin/kafka-console-consumer.sh --topic test --from-beginning --bootstrap-server localhost:9092"
+echo "docker logs -f ${CONTAINER_NAME}"

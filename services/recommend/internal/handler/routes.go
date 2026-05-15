@@ -43,6 +43,7 @@ func RegisterHandlers(server *rest.Server, svcCtx *svc.ServiceContext) {
 			} else {
 				rec = logic.NewRecommend(svcCtx.Rank, svcCtx.Features)
 			}
+			rec.AlgoKafka = svcCtx.AlgoKafka
 			var req transporthttp.RecommendRequestJSON
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)

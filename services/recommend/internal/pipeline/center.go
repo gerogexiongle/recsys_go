@@ -21,7 +21,7 @@ type Center struct {
 	Rank     recsyskit.RankClient
 }
 
-func (p *Center) Run(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, error) {
+func (p *Center) Run(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*Result, error) {
 	if p.Center == nil || p.Center.Recall == nil || p.Recall == nil {
 		return nil, nil
 	}
@@ -53,7 +53,7 @@ func (p *Center) Run(ctx context.Context, req *transporthttp.RecommendRequestJSO
 		}
 	}
 	if len(mainMerged) == 0 && len(exclusive) == 0 {
-		return &transporthttp.RecommendResponseJSON{UserID: req.UserID}, nil
+		return &Result{Resp: &transporthttp.RecommendResponseJSON{UserID: req.UserID}}, nil
 	}
 	ret := req.RetCount
 	if ret <= 0 && prof.FinalRetCount > 0 {
@@ -135,7 +135,7 @@ func (p *Center) loadExposure(ctx context.Context, rctx recsyskit.RequestContext
 	return rctx
 }
 
-func (p *Center) rankAndShow(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext, main []recsyskit.ItemInfo, exclusive recsyskit.ExclusivePool, ret int32) (*transporthttp.RecommendResponseJSON, error) {
+func (p *Center) rankAndShow(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext, main []recsyskit.ItemInfo, exclusive recsyskit.ExclusivePool, ret int32) (*Result, error) {
 	out := main
 	if len(main) > 0 {
 		if ret <= 0 {
@@ -163,7 +163,7 @@ func (p *Center) rankAndShow(ctx context.Context, req *transporthttp.RecommendRe
 			out = show.ApplyStrategies(ctx, p.Features, out, exclusive, sg.ResolvedStrategyList(rctx.ExpIDs))
 		}
 	}
-	return buildResponse(req, out, ret), nil
+	return &Result{Resp: buildResponse(req, out, ret), Items: out}, nil
 }
 
 func reorderByRank(items []recsyskit.ItemInfo, scores []recsyskit.ItemScores) []recsyskit.ItemInfo {

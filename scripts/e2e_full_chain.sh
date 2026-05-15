@@ -1,77 +1,145 @@
 #!/usr/bin/env bash
-# Full chain E2E: seed Redis (2 users, 10 FM items) -> rank (FM pipeline) -> recommend (recall/merge/filter/rank/show).
+# Full E2E: one recommend-api.yaml + env overrides — center pipeline, Kafka audit log, rank LB.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=scripts/e2e_common.sh
+source scripts/e2e_common.sh
 
-export GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
-export RECSYS_SEED_REDIS=1
-export RECSYS_REDIS_HOST="${RECSYS_REDIS_HOST:-172.31.0.80}"
-export RECSYS_REDIS_PORT="${RECSYS_REDIS_PORT:-6379}"
-export RECSYS_REDIS_CRYPTO=1
-export RECSYS_REDIS_PASSWORD_HEX="${RECSYS_REDIS_PASSWORD_HEX:-d1c98bea6a9824201ac9375488748b3c07}"
+e2e_export_defaults
+PHASES="${RECSYS_E2E_PHASES:-center,kafka,lb}"
+
+echo "==> Config: ${RECSYS_CFG} (env: RECSYS_KAFKA_PUSH, RECSYS_RANK_ENDPOINTS)"
+echo "==> Phases: ${PHASES}"
 
 echo "==> Seed Redis at ${RECSYS_REDIS_HOST}:${RECSYS_REDIS_PORT}"
-python3 scripts/seed_feature_redis.py
+e2e_seed_redis
+e2e_free_ports
+echo "==> Build"
+e2e_build
 
-for p in 18080 18081; do
-  fuser -k "${p}/tcp" >/dev/null 2>&1 || true
-done
-sleep 1
+cleanup() { e2e_stop_services; }
+trap cleanup EXIT
 
-echo "==> Build services"
-go build -o bin/rank-api ./services/rank
-go build -o bin/recommend-api ./services/recommend
+# --- Phase 1: center (recall / merge / filter / rank / show) ---
+if [[ ",${PHASES}," == *",center,"* ]]; then
+  echo ""
+  echo "========== PHASE center =========="
+  e2e_start_services
+  e2e_wait_health
+  curl -sf -m 2 http://127.0.0.1:18081/health | grep -qx ok
+  curl -sf -m 2 http://127.0.0.1:18080/health | grep -qx ok
+  READY="$(curl -sf -m 2 http://127.0.0.1:18080/v1/ready)"
+  echo "ready: $READY"
+  echo "$READY" | grep -q '"center":true' || { echo "FAIL: center config"; tail -30 "$REC_LOG"; exit 1; }
 
-RANK_LOG="${TMPDIR:-/tmp}/recsys_full_rank.log"
-REC_LOG="${TMPDIR:-/tmp}/recsys_full_rec.log"
-./bin/rank-api -f services/rank/etc/rank-api.yaml >>"$RANK_LOG" 2>&1 &
-RANK_PID=$!
-./bin/recommend-api -f services/recommend/etc/recommend-api.yaml >>"$REC_LOG" 2>&1 &
-REC_PID=$!
-trap 'kill $REC_PID $RANK_PID 2>/dev/null || true; wait $REC_PID $RANK_PID 2>/dev/null || true' EXIT
+  OUT="$(curl -sf -m 15 -X POST http://127.0.0.1:18080/v1/recommend \
+    -H 'Content-Type: application/json' \
+    -d '{"uuid":"full-e2e-center","user_id":900001,"exp_ids":[0],"ret_count":5}')"
+  echo "$OUT"
 
-echo "==> Wait for health"
-for _ in $(seq 1 40); do
-  if curl -sf -m 1 http://127.0.0.1:18081/health >/dev/null && \
-     curl -sf -m 1 http://127.0.0.1:18080/health >/dev/null; then
-    break
-  fi
-  sleep 0.25
-done
-curl -sf -m 2 http://127.0.0.1:18081/health | grep -qx ok
-curl -sf -m 2 http://127.0.0.1:18080/health | grep -qx ok
-READY="$(curl -sf -m 2 http://127.0.0.1:18080/v1/ready)"
-echo "ready: $READY"
-echo "$READY" | grep -q '"center":true' || { echo "FAIL: center config not loaded"; cat "$REC_LOG"; exit 1; }
-
-echo "==> POST /v1/recommend (user 900001, center pipeline)"
-OUT="$(curl -sf -m 15 -X POST http://127.0.0.1:18080/v1/recommend \
-  -H 'Content-Type: application/json' \
-  -d '{"uuid":"full-e2e","user_id":900001,"exp_ids":[0],"ret_count":5}')"
-echo "$OUT"
-
-python3 - <<'PY' "$OUT"
+  python3 - <<'PY' "$OUT"
 import json, sys
 resp = json.loads(sys.argv[1])
 ids = resp.get("item_ids") or []
 print("item_ids:", ids)
-assert 910005 not in ids, "910005 must be filtered by LiveExposure (exposure=15)"
-assert 910009 not in ids, "910009 must be dropped (no recsysgo:feat:item portrait for rank)"
-assert 910001 in ids, "910001 LiveRedirect should survive merge/filter"
-assert len(ids) >= 3, "expected at least 3 items"
+assert 910005 not in ids, "910005 filtered by LiveExposure"
+assert 910009 not in ids, "910009 dropped (no item portrait)"
+assert 910001 in ids, "910001 LiveRedirect"
+assert len(ids) >= 3
 recall_types = {r.get("recall_type") for r in resp.get("recall") or []}
-assert "CrossTag7d" in recall_types, f"CrossTag7d lane missing in recall meta {recall_types}"
+assert "CrossTag7d" in recall_types, recall_types
 cross_ids = [r["item_id"] for r in (resp.get("recall") or []) if r.get("recall_type") == "CrossTag7d"]
-assert any(i in cross_ids for i in (910006, 910007, 910008)), f"CrossTag7d invert recall expected 910006-910008, got {cross_ids}"
-# ForcedInsert: LiveRedirect 910001 should be near front
+assert any(i in cross_ids for i in (910006, 910007, 910008)), cross_ids
 assert ids[0] == 910001, f"ForcedInsert expects 910001 first, got {ids[0]}"
-# FM order: highest ctr item 910010 should appear before low ctr among returned
 if 910010 in ids and 910004 in ids:
-    assert ids.index(910010) < ids.index(910004), "FM rank: 910010 before 910004"
-print("FULL CHAIN E2E OK")
+    assert ids.index(910010) < ids.index(910004), "FM rank order"
+print("CENTER PHASE OK")
 PY
+  e2e_stop_services
+  e2e_free_ports
+fi
 
-echo "==> Logs (tail)"
-tail -n 5 "$RANK_LOG" || true
-tail -n 5 "$REC_LOG" || true
+# --- Phase 2: Kafka algorithm log ---
+if [[ ",${PHASES}," == *",kafka,"* ]]; then
+  echo ""
+  echo "========== PHASE kafka =========="
+  export RECSYS_E2E_KAFKA=1
+  RECSYS_E2E_REC_LOG="${TMPDIR:-/tmp}/recsys_kafka_rec.log"
+  e2e_start_services
+  e2e_wait_health
+  curl -sf http://127.0.0.1:18080/v1/ready | grep -q '"center":true'
+
+  REQ_UUID="kafka-e2e-$(date +%s)"
+  echo "==> POST /v1/recommend uuid=${REQ_UUID}"
+  OUT="$(curl -sf -m 15 -X POST http://127.0.0.1:18080/v1/recommend \
+    -H 'Content-Type: application/json' \
+    -d "{\"uuid\":\"${REQ_UUID}\",\"user_id\":900001,\"exp_ids\":[0],\"ret_count\":5}")"
+  echo "Response: $OUT"
+
+  KAFKA_MSG="${TMPDIR:-/tmp}/recsys_kafka_msg.txt"
+  sleep 4
+  if ! go run scripts/kafka_consume_latest.go -brokers "$KAFKA_BROKERS" -topic "$KAFKA_TOPIC" \
+      -match "$REQ_UUID" -timeout 20s >"$KAFKA_MSG" 2>/dev/null; then
+    sleep 3
+    go run scripts/kafka_consume_latest.go -brokers "$KAFKA_BROKERS" -topic "$KAFKA_TOPIC" \
+      -match "$REQ_UUID" -timeout 15s >"$KAFKA_MSG" 2>/dev/null || true
+  fi
+  if [[ ! -s "$KAFKA_MSG" ]]; then
+    echo "FAIL: no Kafka message"
+    tail -30 "$REC_LOG" || true
+    exit 1
+  fi
+  echo "Kafka wire: $(cat "$KAFKA_MSG")"
+  python3 - <<PY "$KAFKA_MSG" "$REQ_UUID" "$OUT"
+import json, sys
+msg_path, req_uuid, resp_json = sys.argv[1], sys.argv[2], sys.argv[3]
+parts = open(msg_path).read().strip().split("|")
+assert len(parts) == 28, len(parts)
+assert parts[2] == "10001" and parts[3] == "cn_ol_item"
+assert parts[19] == req_uuid and parts[20] == "900001"
+assert "910001" in parts[24] and "LiveRedirect" in parts[24]
+assert 910001 in json.loads(resp_json).get("item_ids", [])
+print("KAFKA PHASE OK")
+PY
+  e2e_stop_services
+  e2e_free_ports
+  unset RECSYS_E2E_KAFKA
+fi
+
+# --- Phase 3: rank client LB (duplicate endpoints) ---
+if [[ ",${PHASES}," == *",lb,"* ]]; then
+  echo ""
+  echo "========== PHASE lb =========="
+  go test ./pkg/upstream/... -count=1
+  export RECSYS_E2E_RANK_ENDPOINTS="http://127.0.0.1:18081,http://127.0.0.1:18081,http://127.0.0.1:18081"
+  RECSYS_E2E_REC_LOG="${TMPDIR:-/tmp}/recsys_lb_rec.log"
+  e2e_start_services
+  e2e_wait_health
+
+  count_rank_hits() {
+    if [[ -f "${RANK_LOG:-}" ]]; then
+      grep -c 'POST /v1/rank/multi' "$RANK_LOG" 2>/dev/null || echo 0
+    else
+      echo 0
+    fi
+  }
+  RANK_BEFORE="$(count_rank_hits)"
+  RANK_BEFORE="${RANK_BEFORE:-0}"
+
+  for i in 1 2 3 4 5 6; do
+    curl -sf -m 15 -X POST http://127.0.0.1:18080/v1/recommend \
+      -H 'Content-Type: application/json' \
+      -d "{\"uuid\":\"lb-e2e-$i\",\"user_id\":900001,\"exp_ids\":[0],\"ret_count\":5}" \
+      | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("item_ids"), r'
+  done
+  RANK_AFTER="$(count_rank_hits)"
+  DELTA=$((RANK_AFTER - RANK_BEFORE))
+  echo "rank calls delta: $DELTA (expect >= 6)"
+  [[ "$DELTA" -ge 6 ]] || { tail -30 "$RANK_LOG"; exit 1; }
+  echo "LB PHASE OK"
+  e2e_stop_services
+fi
+
+echo ""
+echo "FULL E2E OK (phases: ${PHASES})"

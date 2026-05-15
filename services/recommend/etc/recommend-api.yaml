@@ -24,12 +24,19 @@ FeatureRedis:
   UserKeyPattern: "recsysgo:feat:user:%d"
   ItemKeyPattern: "recsysgo:feat:item:%d"
 
+# Algorithm audit log (pipe-separated). OSS: cn_ol_item / 10001.
+# E2E: RECSYS_KAFKA_PUSH=1 (see config.ApplyEnvOverrides); make e2e-full runs center+kafka+lb.
+KafkaPush:
+  Enabled: false
+  Brokers:
+    - 127.0.0.1:9092
+  Topic: test
+  QueueSize: 2048
+  DataType: cn_ol_item
+  APIType: 10001
+
 RankService:
-  # Single instance or K8s Service VIP:
   BaseURL: http://127.0.0.1:18081
-  # Multi rank-api pods (round_robin | random); overrides load spread when set:
-  # Endpoints:
-  #   - http://10.0.0.11:18081
-  #   - http://10.0.0.12:18081
+  # Multi-pod: set Endpoints in yaml, or E2E/LB lab: RECSYS_RANK_ENDPOINTS=http://host:18081,http://host:18081,...
   LoadBalance: round_robin
   TimeoutMs: 800

@@ -21,6 +21,7 @@ func main() {
 
 	var c config.Config
 	conf.MustLoad(*configFile, &c)
+	config.ApplyEnvOverrides(&c)
 
 	srv := rest.MustNewServer(c.RestConf)
 	defer srv.Stop()

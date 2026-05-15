@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"recsys_go/pkg/featurestore"
+	"recsys_go/pkg/kafkapush"
 	"recsys_go/pkg/recsyskit"
 	"recsys_go/pkg/recsyskit/transporthttp"
 	"recsys_go/services/recommend/internal/centerconfig"
@@ -17,8 +18,9 @@ type ServiceContext struct {
 	Rank     recsyskit.RankClient
 	Features featurestore.Fetcher
 	Funnel   *recsyskit.FunnelLibrary
-	Center   *centerconfig.CenterBundle
-	Recall   *recall.Registry
+	Center    *centerconfig.CenterBundle
+	Recall    *recall.Registry
+	AlgoKafka *kafkapush.Pool
 }
 
 func NewServiceContext(c config.Config, configFilePath string) (*ServiceContext, error) {
@@ -97,5 +99,9 @@ func NewServiceContext(c config.Config, configFilePath string) (*ServiceContext,
 		}
 		rec = recall.NewRegistry(rf)
 	}
-	return &ServiceContext{Config: c, Rank: rank, Features: fetch, Funnel: funnel, Center: center, Recall: rec}, nil
+	algoKafka, err := kafkapush.New(c.KafkaPush)
+	if err != nil {
+		return nil, err
+	}
+	return &ServiceContext{Config: c, Rank: rank, Features: fetch, Funnel: funnel, Center: center, Recall: rec, AlgoKafka: algoKafka}, nil
 }

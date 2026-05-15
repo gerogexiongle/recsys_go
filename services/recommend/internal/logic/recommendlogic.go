@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"recsys_go/pkg/featurestore"
+	"recsys_go/pkg/kafkapush"
 	"recsys_go/pkg/recsyskit"
 	"recsys_go/pkg/recsyskit/transporthttp"
 	"recsys_go/services/recommend/internal/centerconfig"
@@ -18,6 +19,7 @@ type Recommend struct {
 	Funnel   *recsyskit.FunnelLibrary
 	Center   *centerconfig.CenterBundle
 	Recall   *recall.Registry
+	AlgoKafka *kafkapush.Pool
 	centerPL *pipeline.Center
 }
 
@@ -62,16 +64,22 @@ func (l *Recommend) Handle(ctx context.Context, req *transporthttp.RecommendRequ
 	}
 
 	if l.centerPL != nil {
-		out, err := l.centerPL.Run(ctx, req, rctx)
+		result, err := l.centerPL.Run(ctx, req, rctx)
 		if err != nil {
 			return nil, err
 		}
-		if out != nil {
-			return out, nil
+		if result != nil {
+			l.pushAlgoLog(req, rctx, result.Items)
+			return result.Resp, nil
 		}
 	}
 	if l.Funnel != nil && l.Recall != nil {
-		return l.handleFunnel(ctx, req, rctx)
+		resp, items, err := l.handleFunnel(ctx, req, rctx)
+		if err != nil {
+			return nil, err
+		}
+		l.pushAlgoLog(req, rctx, items)
+		return resp, nil
 	}
 	stub := []recsyskit.ItemInfo{
 		{ID: 10001, RecallType: "stub_hot"},
@@ -82,35 +90,38 @@ func (l *Recommend) Handle(ctx context.Context, req *transporthttp.RecommendRequ
 	if err != nil {
 		return nil, err
 	}
-	return buildRecommendResponse(req, items, req.RetCount), nil
+	resp := buildRecommendResponse(req, items, req.RetCount)
+	l.pushAlgoLog(req, rctx, items)
+	return resp, nil
 }
 
-func (l *Recommend) handleFunnel(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, error) {
+func (l *Recommend) handleFunnel(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, []recsyskit.ItemInfo, error) {
 	prof := l.Funnel.ResolveFunnel(rctx.ExpIDs, rctx.UserGroup)
 	if prof == nil {
-		return l.stubRankResponse(ctx, req, rctx)
+		resp, items, err := l.stubRankResponse(ctx, req, rctx)
+		return resp, items, err
 	}
 	exclusive, main := prof.ResolvedRecallLists(rctx.ExpIDs)
 	exclusiveBatches, err := l.runRules(ctx, rctx, exclusive)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	mainBatches, err := l.runRules(ctx, rctx, main)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	merged := recsyskit.MergeRecallLanes(exclusiveBatches, mainBatches, prof.AllMergeNum)
 	merged, _ = l.markAndDropNoPortrait(ctx, merged)
 	rctx = l.loadExposure(ctx, rctx)
 	merged = recsyskit.ApplyFilterPolicies(rctx, prof.ResolvedFilterPolicies(rctx.ExpIDs), merged)
 	if len(merged) == 0 {
-		return &transporthttp.RecommendResponseJSON{UserID: req.UserID}, nil
+		return &transporthttp.RecommendResponseJSON{UserID: req.UserID}, nil, nil
 	}
 	ret := effectiveRetCount(req, prof.FinalRetCount)
 	return l.rankAndShowFunnel(ctx, req, rctx, merged, prof.ResolvedShowControl(rctx.ExpIDs), ret)
 }
 
-func (l *Recommend) stubRankResponse(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, error) {
+func (l *Recommend) stubRankResponse(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext) (*transporthttp.RecommendResponseJSON, []recsyskit.ItemInfo, error) {
 	stub := []recsyskit.ItemInfo{
 		{ID: 10001, RecallType: "stub_hot"},
 		{ID: 10002, RecallType: "stub_hot"},
@@ -118,9 +129,9 @@ func (l *Recommend) stubRankResponse(ctx context.Context, req *transporthttp.Rec
 	}
 	items, err := l.Pipeline.Run(ctx, rctx, stub)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buildRecommendResponse(req, items, req.RetCount), nil
+	return buildRecommendResponse(req, items, req.RetCount), items, nil
 }
 
 func effectiveRetCount(req *transporthttp.RecommendRequestJSON, finalRet int) int32 {
@@ -131,7 +142,7 @@ func effectiveRetCount(req *transporthttp.RecommendRequestJSON, finalRet int) in
 	return ret
 }
 
-func (l *Recommend) rankAndShowFunnel(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext, merged []recsyskit.ItemInfo, show recsyskit.ShowControlCfg, ret int32) (*transporthttp.RecommendResponseJSON, error) {
+func (l *Recommend) rankAndShowFunnel(ctx context.Context, req *transporthttp.RecommendRequestJSON, rctx recsyskit.RequestContext, merged []recsyskit.ItemInfo, show recsyskit.ShowControlCfg, ret int32) (*transporthttp.RecommendResponseJSON, []recsyskit.ItemInfo, error) {
 	if ret <= 0 {
 		ret = int32(len(merged))
 	}
@@ -148,14 +159,14 @@ func (l *Recommend) rankAndShowFunnel(ctx context.Context, req *transporthttp.Re
 	}
 	resp, err := l.Pipeline.Rank.MultiRank(ctx, mreq)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	items := merged
 	if resp != nil && len(resp.Groups) > 0 && len(resp.Groups[0].Items) > 0 {
 		items = reorderByRankGeneric(merged, resp.Groups[0].Items)
 	}
 	items = recsyskit.ApplyShowControl(show, items)
-	return buildRecommendResponse(req, items, ret), nil
+	return buildRecommendResponse(req, items, ret), items, nil
 }
 
 func (l *Recommend) runRules(ctx context.Context, rctx recsyskit.RequestContext, rules []recsyskit.RecallMergeRule) ([][]recsyskit.ItemInfo, error) {
